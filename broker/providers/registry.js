@@ -2,7 +2,7 @@
 
 const { validateProvider, validateProviderResult } = require("./provider");
 
-const REQUEST_KEYS = new Set(["task", "model", "effort"]);
+const REQUEST_KEYS = new Set(["task", "model", "effort", "timeoutSeconds"]);
 
 class ProviderRegistry {
   /**
@@ -70,19 +70,40 @@ class ProviderRegistry {
         !["low", "medium", "high", "xhigh", "max"].includes(request.effort)) {
       throw new TypeError("request.effort is invalid");
     }
+    if (
+      request.timeoutSeconds !== undefined &&
+      (!Number.isInteger(request.timeoutSeconds) ||
+        request.timeoutSeconds < 1 ||
+        request.timeoutSeconds > entry.timeoutSeconds)
+    ) {
+      throw new TypeError("request.timeoutSeconds is invalid or exceeds provider timeout");
+    }
 
     if (entry.kind === "api") {
       const model = request.model ?? entry.defaultModel;
       if (typeof model !== "string" || !entry.models.includes(model)) {
         throw new TypeError(`unknown model for provider ${entry.id}`);
       }
-      return { task: request.task, model, ...(request.effort ? { effort: request.effort } : {}) };
+      return {
+        task: request.task,
+        model,
+        ...(request.effort ? { effort: request.effort } : {}),
+        ...(request.timeoutSeconds !== undefined
+          ? { timeoutSeconds: request.timeoutSeconds }
+          : {})
+      };
     }
 
     if (request.model !== undefined) {
       throw new TypeError(`model selection is not supported for CLI provider ${entry.id}`);
     }
-    return { task: request.task, ...(request.effort ? { effort: request.effort } : {}) };
+    return {
+      task: request.task,
+      ...(request.effort ? { effort: request.effort } : {}),
+      ...(request.timeoutSeconds !== undefined
+        ? { timeoutSeconds: request.timeoutSeconds }
+        : {})
+    };
   }
 
   /**
@@ -102,11 +123,12 @@ class ProviderRegistry {
     const safeRequest = this.validateRequest(entry, request);
     const controller = new AbortController();
     let timeoutHandle;
+    const timeoutSeconds = request.timeoutSeconds ?? entry.timeoutSeconds;
     const timeout = new Promise((resolve, reject) => {
       timeoutHandle = setTimeout(() => {
         controller.abort();
         reject(new Error(`provider ${providerId} timed out`));
-      }, entry.timeoutSeconds * 1000);
+      }, timeoutSeconds * 1000);
     });
     const work = Promise.resolve().then(() =>
       adapter.analyze(Object.freeze({ ...safeRequest, signal: controller.signal }))

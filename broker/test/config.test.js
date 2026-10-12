@@ -13,17 +13,21 @@ const valid = () => ({
       id: "api-one",
       kind: "api",
       enabled: false,
+      baseUrl: "https://api.one.example/v1",
       timeoutSeconds: 120,
       models: ["a", "b"],
-      defaultModel: "a"
+      defaultModel: "a",
+      credentialEnv: "TEST_API_ONE_KEY"
     },
     {
       id: "api-two",
       kind: "api",
       enabled: false,
+      baseUrl: "https://api.two.example/v1",
       timeoutSeconds: 90,
       models: ["c", "d"],
-      defaultModel: "d"
+      defaultModel: "d",
+      credentialEnv: "TEST_API_TWO_KEY"
     }
   ]
 });
@@ -49,9 +53,25 @@ test("rejects duplicate IDs, unknown kinds, and unknown fields", () => {
   assert.throws(() => validateConfig(config), /unknown field/);
 
   config = valid();
-  config.providers[1].baseUrl = "https://example.test";
+  config.providers[1].unknown = true;
   assert.throws(() => validateConfig(config), /unknown field/);
 });
+test("requires HTTPS API URLs without embedded credentials or query parts", () => {
+  for (const baseUrl of [
+    "http://api.example.test/v1",
+    "https://user:pass@api.example.test/v1",
+    "https://api.example.test/v1?key=secret",
+    "https://api.example.test/v1#fragment",
+    "not a URL"
+  ]) {
+    const config = valid();
+    config.providers[1].baseUrl = baseUrl;
+    assert.throws(() => validateConfig(config), /baseUrl/);
+  }
+  const config = validateConfig(valid());
+  assert.equal(config.providers[1].baseUrl, "https://api.one.example/v1");
+});
+
 
 test("rejects invalid timeouts", () => {
   for (const timeoutSeconds of [0, -1, 601, 1.5, "20"]) {

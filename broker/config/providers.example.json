@@ -13,6 +13,7 @@
       "id": "api-provider-one",
       "kind": "api",
       "enabled": false,
+      "baseUrl": "https://api.example.invalid/v1",
       "timeoutSeconds": 120,
       "models": ["model-alpha", "model-beta"],
       "defaultModel": "model-alpha",
@@ -22,9 +23,11 @@
       "id": "api-provider-two",
       "kind": "api",
       "enabled": false,
+      "baseUrl": "https://api.example.invalid/v1",
       "timeoutSeconds": 120,
       "models": ["model-gamma", "model-delta"],
-      "defaultModel": "model-gamma"
+      "defaultModel": "model-gamma",
+      "credentialEnv": "API_PROVIDER_TWO_KEY"
     }
   ]
 }

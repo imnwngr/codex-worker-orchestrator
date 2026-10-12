@@ -4,6 +4,7 @@ const TOP_KEYS = new Set(["version", "defaultProvider", "providers"]);
 const BASE_PROVIDER_KEYS = new Set(["id", "kind", "enabled", "timeoutSeconds"]);
 const API_KEYS = new Set([
   ...BASE_PROVIDER_KEYS,
+  "baseUrl",
   "models",
   "defaultModel",
   "credentialEnv"
@@ -64,6 +65,14 @@ function validateConfig(config) {
     }
 
     if (provider.kind === "api") {
+      if (typeof provider.baseUrl !== "string" || !provider.baseUrl.trim() || provider.baseUrl !== provider.baseUrl.trim()) {
+        fail(`${path}.baseUrl`, "must be a fixed HTTPS URL");
+      }
+      let baseUrl;
+      try { baseUrl = new URL(provider.baseUrl); } catch { fail(`${path}.baseUrl`, "must be a valid HTTPS URL"); }
+      if (baseUrl.protocol !== "https:" || !baseUrl.hostname || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {
+        fail(`${path}.baseUrl`, "must use HTTPS and contain no credentials, query, or fragment");
+      }
       if (!Array.isArray(provider.models) || provider.models.length === 0) {
         fail(`${path}.models`, "must be a non-empty array");
       }
@@ -86,6 +95,9 @@ function validateConfig(config) {
       ) {
         fail(`${path}.credentialEnv`, "must be an environment variable name");
       }
+      if (provider.credentialEnv === undefined) {
+        fail(`${path}.credentialEnv`, "must name an environment variable");
+      }
     } else if (
       provider.efforts !== undefined &&
       (!Array.isArray(provider.efforts) ||
@@ -97,6 +109,9 @@ function validateConfig(config) {
 
     return Object.freeze({
       ...provider,
+      ...(provider.kind === "api"
+        ? { baseUrl: new URL(provider.baseUrl).toString().replace(/\/$/, "") }
+        : {}),
       ...(provider.models ? { models: Object.freeze([...provider.models]) } : {}),
       ...(provider.efforts ? { efforts: Object.freeze([...provider.efforts]) } : {})
     });

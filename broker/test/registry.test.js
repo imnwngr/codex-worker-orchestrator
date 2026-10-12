@@ -14,6 +14,8 @@ function makeConfig(overrides = {}) {
         id: "api",
         kind: "api",
         enabled: true,
+        baseUrl: "https://api.example.test/v1",
+        credentialEnv: "TEST_API_KEY",
         timeoutSeconds: 1,
         models: ["m1", "m2"],
         defaultModel: "m1"
@@ -28,6 +30,8 @@ function makeConfig(overrides = {}) {
         id: "disabled",
         kind: "api",
         enabled: false,
+        credentialEnv: "DISABLED_API_KEY",
+        baseUrl: "https://disabled.example.test/v1",
         timeoutSeconds: 1,
         models: ["m1"],
         defaultModel: "m1"

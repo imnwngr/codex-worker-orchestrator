@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { loadConfig } = require("./providers/config-loader");
 const { ProviderRegistry } = require("./providers/registry");
 const { createRuntimeAdapters } = require("./providers/runtime");
+const { BatchGate, handleBatch } = require("./providers/batch-security");
 
 const HOST = "127.0.0.1";
 const PORT = 8765;
@@ -48,9 +49,13 @@ function createBrokerServer(options = {}) {
   const registry = options.registry || new ProviderRegistry(config, adapters);
   // The legacy HTTP route deliberately remains pinned to Antigravity.
   registry.get("antigravity");
+  const batchOptions = { ...options, registry, gate: options.batchGate || new BatchGate() };
   const logger = options.logger || console;
 
   return http.createServer(async (req, res) => {
+    if (req.method === "POST" && req.url === "/v1/analyze/batch") {
+      return handleBatch(req, res, batchOptions);
+    }
   if (req.method === "GET" && req.url === "/health") {
     return send(res, 200, {
       ok: true,

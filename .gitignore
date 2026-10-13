@@ -1,0 +1,42 @@
+# Node/runtime
+node_modules/
+coverage/
+dist/
+build/
+.nyc_output/
+*.log
+logs/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*credentials*.json
+*secrets*.json
+broker/config/providers.local.json
+broker/config/providers.private.json
+broker/config/providers.override.json
+
+# Local Codex / editor settings
+.codex/
+.vscode/
+.idea/
+
+# OS / temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak
+*.swp
+*.patch
+
+# User-generated approval/audit state (not for source control)
+approval-state/
+approval-logs/

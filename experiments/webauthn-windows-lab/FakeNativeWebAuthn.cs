@@ -16,14 +16,25 @@ internal interface IFakeNativeWebAuthn
     Task SimulatePlatformCredentialDeletionAsync(
         string credentialId,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyCollection<string>> SimulateCredentialInventoryAsync(
+        CancellationToken cancellationToken);
 }
 
 internal sealed class FakeNativeFailureException : Exception
 {
-    public FakeNativeFailureException(string message, string? orphanCredentialId = null)
-        : base(message) => OrphanCredentialId = orphanCredentialId;
+    public FakeNativeFailureException(
+        string message,
+        string? orphanCredentialId = null,
+        bool outcomeUnknown = false)
+        : base(message)
+    {
+        OrphanCredentialId = orphanCredentialId;
+        OutcomeUnknown = outcomeUnknown;
+    }
 
     public string? OrphanCredentialId { get; }
+    public bool OutcomeUnknown { get; }
 }
 
 internal sealed class FakeNativeBuffer : IDisposable
@@ -121,8 +132,17 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
 
     public bool FailRegistration { get; set; }
     public bool CreateOrphanThenFail { get; set; }
+    public bool RegistrationOutcomeUnknown { get; set; }
+    public bool UnknownOutcomeCreatesCredential { get; set; } = true;
+    public bool ReturnMalformedCose { get; set; }
+    public Action? AfterRegistrationCreated { get; set; }
     public bool FailAssertion { get; set; }
     public bool FailDeletion { get; set; }
+    public bool DeleteThenLoseResponse { get; set; }
+    public bool DeleteUnknownWithoutEffect { get; set; }
+    public bool FailNextInventory { get; set; }
+    public bool CancelAfterDeletion { get; set; }
+    public int DeletionCalls { get; private set; }
     public IReadOnlyCollection<string> FakeCredentialIds => _fakePlatformCredentialIds;
 
     public Task<FakeRegistrationResult> SimulateRegistrationAsync(
@@ -134,6 +154,17 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
         var id = Convert.ToBase64String(idBytes)
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
         _fakePlatformCredentialIds.Add(id);
+        AfterRegistrationCreated?.Invoke();
+
+        if (RegistrationOutcomeUnknown)
+        {
+            RegistrationOutcomeUnknown = false;
+            if (!UnknownOutcomeCreatesCredential)
+                _fakePlatformCredentialIds.Remove(id);
+            throw new FakeNativeFailureException(
+                "Simulated registration with unknown outcome.",
+                outcomeUnknown: true);
+        }
 
         if (CreateOrphanThenFail)
         {
@@ -149,7 +180,9 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
         }
 
         return Task.FromResult(new FakeRegistrationResult(
-            idBytes, SyntheticCbor.Es256Key()));
+            idBytes, ReturnMalformedCose
+                ? new byte[] { 0xa1, 0x01 }
+                : SyntheticCbor.Es256Key()));
     }
 
     public Task<FakeAssertionResult> SimulateAssertionAsync(
@@ -192,7 +225,41 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
             FailDeletion = false;
             throw new FakeNativeFailureException("Simulated cleanup failure.");
         }
+        DeletionCalls++;
+        if (DeleteUnknownWithoutEffect)
+        {
+            DeleteUnknownWithoutEffect = false;
+            throw new FakeNativeFailureException(
+                "Simulated delete response lost without changing the fake inventory.",
+                outcomeUnknown: true);
+        }
+        if (DeleteThenLoseResponse)
+        {
+            DeleteThenLoseResponse = false;
+            _fakePlatformCredentialIds.Remove(credentialId);
+            throw new FakeNativeFailureException(
+                "Simulated delete succeeded but response was lost.",
+                outcomeUnknown: true);
+        }
         _fakePlatformCredentialIds.Remove(credentialId);
+        if (CancelAfterDeletion)
+        {
+            CancelAfterDeletion = false;
+            throw new OperationCanceledException("Synthetic deletion completed before cancellation.");
+        }
         return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyCollection<string>> SimulateCredentialInventoryAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailNextInventory)
+        {
+            FailNextInventory = false;
+            throw new FakeNativeFailureException("Synthetic inventory unavailable.", outcomeUnknown: true);
+        }
+        return Task.FromResult<IReadOnlyCollection<string>>(
+            _fakePlatformCredentialIds.ToArray());
     }
 }

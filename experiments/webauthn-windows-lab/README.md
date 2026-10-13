@@ -18,12 +18,17 @@ matched the fake contract. It does not mean a signature was checked.
   entry points.
 - `FakeNativeWebAuthn` simulates registration, assertion, cancellation,
   failures, fake result allocation, and cleanup in process memory.
+- `RecoveryJournal` records versioned synthetic operation IDs, states,
+  outcomes, fixed test RP/origin, fake credential metadata, cleanup attempts,
+  and consumed challenge/nonce identifiers in memory only.
 - `CborCose.cs` strictly parses a small bounded CBOR subset and validates the
   shape and supported algorithm parameters of synthetic ES256 and RS256 COSE
   keys. It is not an attestation validator or a signature verifier.
 - `ClientData.cs` rejects duplicate JSON properties and compares challenge
   and origin exactly while retaining the original JSON bytes.
-- `LabWorkflow.cs` models deterministic test states, expiration and replay.
+- `LabWorkflow.cs` models deterministic test states, ambiguous outcomes,
+  explicit fake inventory reconciliation, expiration, and journal-backed
+  in-process replay checks.
   No state represents actual approval.
 
 The fake public-key fingerprint is SHA-256 over encoded COSE bytes, not a
@@ -87,10 +92,16 @@ The package-free console runner covers:
 - accepted ES256 P-256 and RS256 RSA COSE shapes plus unsupported algorithms,
   curves, and malformed key lengths;
 - fake-owned result buffers, copying and deterministic release;
-- enrollment failure, cancellation, orphan recovery, cleanup failure,
-  explicit cleanup retry after revocation, and cleanup after fake assertion;
+- enrollment failure, pre-start cancellation, unknown outcomes, cancellation
+  racing with successful fake registration, created-but-unpinned recovery,
+  and fake inventory reconciliation;
+- revocation before cleanup, cleanup failure, response loss after synthetic
+  deletion, explicit retry, inventory verification, and idempotent outcomes;
 - fake credential ID, encoded-COSE-key fingerprint and algorithm mismatches;
-- fake challenge expiry and one-use replay rejection;
+- fake challenge expiry, one-use replay rejection across gates sharing one
+  journal, and an explicit demonstration that a fresh journal has no durable
+  replay history;
+- rejection of any RP ID/origin override from untrusted input;
 - JavaScript-compatible trimming of fixture task text and the exact resulting
   UTF-8 bytes/hash used as the displayed effective task.
 
@@ -114,7 +125,15 @@ application integrity, or independent USER approval. Same-user malware can
 inspect or replace user-writable binaries, automate or spoof UI, and make its
 own WebAuthn requests. A native caller-supplied origin does not prevent that.
 There is no protected caller channel and no durable replay state across
-process restarts.
+process restarts. The new recovery journal is deliberately in-memory only.
+Sharing it between fake workflow instances simulates a restart handoff; it
+does not persist across an actual process restart and does not resist
+same-user tampering. A completely fresh journal accepts previously consumed
+challenge/nonce pairs because it has no prior history.
+
+Unknown enrollment and cleanup outcomes must remain blocked until fake
+inventory reconciliation. An inventory result is synthetic and cannot
+establish the behavior or completeness of a Windows credential inventory.
 
 There is no real credential to clean up. A future separately authorized
 experiment must treat an interrupted MakeCredential operation as potentially
@@ -134,3 +153,9 @@ authorizes credential creation and addresses runtime API version, trusted
 test enrollment, recovery after interruption, authenticator selection,
 origin/RP behavior, same-user process risk, and cleanup. A prompt or valid
 signature must never be treated as independent USER approval.
+
+Recovery ambiguity is modeled for both pinned credentials and known unpinned
+orphans. A deletion response loss, cancellation after deletion, or inability to
+check fake inventory blocks further cleanup attempts until reconciliation.
+The fake inventory is not a reliable real authenticator inventory, and an
+in-memory journal cannot survive an actual process restart.

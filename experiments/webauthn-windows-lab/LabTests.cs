@@ -22,7 +22,21 @@ internal static class LabTests
         ("fake assertion ID, algorithm, key, expiry, and replay checks fail closed", AssertionChecks),
         ("fake revocation precedes cleanup and survives cleanup failure", CleanupFailure),
         ("completed fake assertions can be revoked and cleaned", CleanupAfterAssertion),
-        ("displayed task text and effective UTF-8 hash use normalized bytes", TaskBytes)
+        ("displayed task text and effective UTF-8 hash use normalized bytes", TaskBytes),
+        ("unknown enrollment outcome blocks until inventory reconciliation", UnknownEnrollment),
+        ("created but unpinned fake credential is retained and recoverable", CreatedUnpinned),
+        ("cancellation racing with success preserves the returned credential", CancellationRace),
+        ("cleanup response loss requires inventory reconciliation", CleanupOutcomeUnknown),
+        ("shared journal rejects replay across gate instances", ReplayAcrossGates),
+        ("a fresh journal does not claim durable replay protection", ReplayWithFreshJournal),
+        ("fixed test origin cannot be overridden", FixedOrigin),
+        ("orphan cleanup response loss remains blocked until reconciliation", OrphanCleanupUnknown),
+        ("cancellation during cleanup remains unknown until reconciliation", CleanupCancellationUnknown),
+        ("reconciliation returning an error remains unknown", ReconciliationFailure),
+        ("incompatible gate and workflow journals are rejected", MismatchedJournals),
+        ("failed fake enrollment reconciliation remains unknown", EnrollmentReconciliationFailure),
+        ("parallel fake replay attempts consume one nonce once", ConcurrentFakeConsumption),
+        ("unknown deletion that did not take effect requires reconciliation before retry", CleanupUnknownStillPresent)
     ];
 
     public static int Count => Tests.Count;
@@ -220,6 +234,8 @@ internal static class LabTests
                 canceledWorkflow.EnrollAsync(cancellation.Token));
         }
         Equal(LabState.Cancelled, canceledWorkflow.State, "Cancellation state.");
+        Equal(RecoveryOutcome.NotStarted, canceledWorkflow.Journal.Current.Outcome,
+            "Pre-cancelled enrollment is explicitly not started.");
 
         var failedNative = new FakeNativeWebAuthn { FailRegistration = true };
         var failedWorkflow = new LabWorkflow(failedNative, new FakeAssertionGate());
@@ -333,6 +349,267 @@ internal static class LabTests
         Equal(Convert.ToHexString(SHA256.HashData(binding.EffectiveUtf8Bytes))
             .ToLowerInvariant(), binding.Sha256, "Task hash.");
         return Task.CompletedTask;
+    }
+
+    private static async Task UnknownEnrollment()
+    {
+        var native = new FakeNativeWebAuthn { RegistrationOutcomeUnknown = true };
+        var journal = new RecoveryJournal();
+        var workflow = new LabWorkflow(native, new FakeAssertionGate(journal), journal);
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State, "Unknown state.");
+        Equal(RecoveryOutcome.Unknown, journal.Current.Outcome, "Journal outcome.");
+        await ThrowsAsync<InvalidOperationException>(() => workflow.EnrollAsync(default));
+
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.OrphanedCredential, workflow.State,
+            "One new fake inventory ID becomes an orphan.");
+        await workflow.RecoverOrphanAsync(default);
+        Equal(LabState.Ready, workflow.State, "Known orphan is removed and reconciled.");
+
+        var noCreateNative = new FakeNativeWebAuthn
+        {
+            RegistrationOutcomeUnknown = true,
+            UnknownOutcomeCreatesCredential = false
+        };
+        var noCreate = new LabWorkflow(noCreateNative, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => noCreate.EnrollAsync(default));
+        await noCreate.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.Ready, noCreate.State,
+            "Empty fake inventory confirms no new synthetic ID.");
+    }
+
+    private static async Task CreatedUnpinned()
+    {
+        var native = new FakeNativeWebAuthn { ReturnMalformedCose = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<InvalidDataException>(() => workflow.EnrollAsync(default));
+        Equal(LabState.CreatedUnpinned, workflow.State, "Unpinned state retained.");
+        True(workflow.OrphanCredentialId is not null, "Known ID remains available.");
+        True(workflow.Credential is null, "Invalid COSE is never pinned.");
+        await ThrowsAsync<InvalidOperationException>(() => workflow.RunAssertionAsync(
+            "challenge", StrictClientData.TestOrigin, 2000, "nonce", 1000, default));
+        await workflow.RecoverOrphanAsync(default);
+        Equal(LabState.Ready, workflow.State, "Unpinned fake is explicitly recovered.");
+    }
+
+    private static async Task CancellationRace()
+    {
+        var native = new FakeNativeWebAuthn();
+        using var source = new CancellationTokenSource();
+        native.AfterRegistrationCreated = source.Cancel;
+        var journal = new RecoveryJournal();
+        var workflow = new LabWorkflow(native, new FakeAssertionGate(journal), journal);
+        await workflow.EnrollAsync(source.Token);
+        Equal(LabState.CredentialPinnedInMemory, workflow.State,
+            "Successful result wins over a concurrent cancellation request.");
+        True(workflow.Credential is not null, "Successful synthetic result is preserved.");
+        True(journal.Current.CancellationRequested,
+            "Journal records the overlapping cancellation request.");
+        Equal(RecoveryOutcome.Succeeded, journal.Current.Outcome,
+            "Returned and validated result is reconciled as succeeded.");
+    }
+
+    private static async Task CleanupOutcomeUnknown()
+    {
+        var native = new FakeNativeWebAuthn { DeleteThenLoseResponse = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        var id = workflow.Credential!.CredentialId;
+        await ThrowsAsync<FakeNativeFailureException>(() =>
+            workflow.RevokeAndCleanFakeAsync(default));
+        Equal(LabState.CleanupOutcomeUnknown, workflow.State,
+            "Lost delete response remains unknown.");
+        True(workflow.Credential is null, "Revocation is never undone.");
+        Equal(id, workflow.PendingCleanupCredentialId, "ID retained for reconciliation.");
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.RevokedAndCleaned, workflow.State,
+            "Absence from fake inventory confirms fake cleanup.");
+        Equal(1, native.DeletionCalls, "Reconciliation does not repeat deletion.");
+        await ThrowsAsync<InvalidOperationException>(() =>
+            workflow.RetryFakeCleanupAsync(default));
+    }
+
+    private static async Task ReplayAcrossGates()
+    {
+        var journal = new RecoveryJournal();
+        var native = new FakeNativeWebAuthn();
+        var workflow = new LabWorkflow(native, new FakeAssertionGate(journal), journal);
+        await workflow.EnrollAsync(default);
+        var credential = workflow.Credential!;
+        const long now = 1800000000000;
+        const string challenge = "restart-shared-challenge";
+        const string nonce = "restart-shared-nonce";
+        await workflow.RunAssertionAsync(challenge, StrictClientData.TestOrigin,
+            now + 1000, nonce, now, default);
+
+        var payload = new FakeAssertionPayload(
+            DecodeBase64Url(credential.CredentialId), credential.Algorithm,
+            credential.PublicKeySha256,
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                type = "webauthn.get", challenge, origin = StrictClientData.TestOrigin
+            }),
+            now + 1000, nonce);
+        var restartedGate = new FakeAssertionGate(journal);
+        Throws<InvalidDataException>(() => restartedGate.Evaluate(
+            credential, payload, challenge, StrictClientData.TestOrigin, now));
+    }
+
+    private static async Task ReplayWithFreshJournal()
+    {
+        var native = new FakeNativeWebAuthn();
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        var credential = workflow.Credential!;
+        const long now = 1800000000000;
+        const string challenge = "restart-fresh-challenge";
+        const string nonce = "restart-fresh-nonce";
+        var payload = new FakeAssertionPayload(
+            DecodeBase64Url(credential.CredentialId), credential.Algorithm,
+            credential.PublicKeySha256,
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                type = "webauthn.get", challenge, origin = StrictClientData.TestOrigin
+            }),
+            now + 1000, nonce);
+        var firstJournal = new RecoveryJournal();
+        _ = new FakeAssertionGate(firstJournal).Evaluate(
+            credential, payload, challenge, StrictClientData.TestOrigin, now);
+        Throws<InvalidDataException>(() => new FakeAssertionGate(firstJournal).Evaluate(
+            credential, payload, challenge, StrictClientData.TestOrigin, now));
+        var freshJournal = new RecoveryJournal();
+        var replayAccepted = new FakeAssertionGate(freshJournal).Evaluate(
+            credential, payload, challenge, StrictClientData.TestOrigin, now);
+        True(replayAccepted.Outcome.Contains("Fake fields matched", StringComparison.Ordinal),
+            "A fresh in-memory journal lacks the previous nonce and accepts the replay.");
+        Equal(RecoveryJournal.CurrentSchemaVersion,
+            freshJournal.Current.SchemaVersion, "Journal schema is versioned.");
+    }
+
+    private static Task FixedOrigin()
+    {
+        Equal(RecoveryJournal.TestRpId, "lab.example.test", "Fixed test RP ID.");
+        Equal(RecoveryJournal.TestOrigin, StrictClientData.TestOrigin,
+            "Journal and parser use the same fixed origin.");
+        var gate = new FakeAssertionGate();
+        var credential = new TestCredential("ZmFrZS1jcmVkZW50aWFsLTAwMDE",
+            -7, new string('a', 64));
+        var payload = new FakeAssertionPayload(new byte[20], -7, new string('a', 64),
+            Encoding.UTF8.GetBytes("{\"type\":\"webauthn.get\",\"challenge\":\"c\"," +
+                "\"origin\":\"https://approval.lab.example.test\"}"),
+            2000, "n");
+        Throws<InvalidDataException>(() => gate.Evaluate(
+            credential, payload, "c", "https://user-input.example", 1000));
+        return Task.CompletedTask;
+    }
+
+    private static async Task OrphanCleanupUnknown()
+    {
+        var native = new FakeNativeWebAuthn { CreateOrphanThenFail = true,
+            DeleteThenLoseResponse = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        var orphan = workflow.OrphanCredentialId;
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.RecoverOrphanAsync(default));
+        Equal(LabState.OrphanCleanupOutcomeUnknown, workflow.State,
+            "Orphan cleanup response loss blocks immediate retry.");
+        Equal(orphan, workflow.OrphanCredentialId, "Orphan ID remains for reconciliation.");
+        await ThrowsAsync<InvalidOperationException>(() => workflow.RecoverOrphanAsync(default));
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.Ready, workflow.State, "Absent synthetic ID reconciles orphan cleanup.");
+        Equal(1, native.DeletionCalls, "No blind duplicate deletion.");
+    }
+
+    private static async Task CleanupCancellationUnknown()
+    {
+        var native = new FakeNativeWebAuthn { CancelAfterDeletion = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        await ThrowsAsync<OperationCanceledException>(() => workflow.RevokeAndCleanFakeAsync(default));
+        Equal(LabState.CleanupOutcomeUnknown, workflow.State,
+            "Cancellation after synthetic deletion must remain unknown.");
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.RevokedAndCleaned, workflow.State,
+            "Cleanup is confirmed only after fake inventory reconciliation.");
+    }
+
+    private static async Task ReconciliationFailure()
+    {
+        var native = new FakeNativeWebAuthn { DeleteThenLoseResponse = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.RevokeAndCleanFakeAsync(default));
+        native.FailNextInventory = true;
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.ReconcileUnknownCleanupAsync(default));
+        Equal(LabState.CleanupOutcomeUnknown, workflow.State,
+            "Unavailable fake inventory must preserve unknown state.");
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.RevokedAndCleaned, workflow.State,
+            "Recovery is possible after fake inventory responds.");
+    }
+
+    private static Task MismatchedJournals()
+    {
+        var first = new RecoveryJournal();
+        var second = new RecoveryJournal();
+        Throws<ArgumentException>(() => new LabWorkflow(
+            new FakeNativeWebAuthn(), new FakeAssertionGate(first), second));
+        return Task.CompletedTask;
+    }
+
+    private static async Task EnrollmentReconciliationFailure()
+    {
+        var native = new FakeNativeWebAuthn { RegistrationOutcomeUnknown = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        native.FailNextInventory = true;
+        await ThrowsAsync<FakeNativeFailureException>(() =>
+            workflow.ReconcileUnknownEnrollmentAsync(default));
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "Unavailable fake inventory cannot unblock another enrollment.");
+        Equal(RecoveryOutcome.Unknown, workflow.Journal.Current.Outcome,
+            "Journal preserves unknown outcome when reconciliation fails.");
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.OrphanedCredential, workflow.State,
+            "Known synthetic orphan becomes recoverable after inventory responds.");
+    }
+
+    private static Task ConcurrentFakeConsumption()
+    {
+        var journal = new RecoveryJournal();
+        var results = new bool[32];
+        Parallel.For(0, results.Length, index =>
+        {
+            results[index] = journal.TryConsume("same-challenge", "same-nonce");
+        });
+        Equal(1, results.Count(accepted => accepted),
+            "Exactly one in-process fake replay attempt may consume a pair.");
+        Equal(1, journal.ConsumedNonceCount,
+            "Consumed set must remain internally consistent.");
+        return Task.CompletedTask;
+    }
+
+    private static async Task CleanupUnknownStillPresent()
+    {
+        var native = new FakeNativeWebAuthn { DeleteUnknownWithoutEffect = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        await ThrowsAsync<FakeNativeFailureException>(() =>
+            workflow.RevokeAndCleanFakeAsync(default));
+        Equal(LabState.CleanupOutcomeUnknown, workflow.State,
+            "Uncertain deletion outcome blocks retries.");
+        await ThrowsAsync<InvalidOperationException>(() =>
+            workflow.RetryFakeCleanupAsync(default));
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.RevokedCleanupPending, workflow.State,
+            "Fake inventory confirms presence and allows an explicit retry.");
+        True(workflow.Credential is null, "Revoked trust remains unavailable.");
+        await workflow.RetryFakeCleanupAsync(default);
+        Equal(LabState.RevokedAndCleaned, workflow.State,
+            "A second fake deletion must be independently inventoried.");
+        Equal(2, native.DeletionCalls,
+            "One uncertain attempt and one explicit post-reconciliation retry.");
     }
 
     private static byte[] DecodeBase64Url(string value)

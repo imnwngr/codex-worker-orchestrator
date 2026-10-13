@@ -3,6 +3,8 @@
 const { validateProvider, validateProviderResult } = require("./provider");
 
 const REQUEST_KEYS = new Set(["task", "model", "effort", "timeoutSeconds"]);
+const TARGET_KEYS = new Set(["id", "provider", ...REQUEST_KEYS]);
+const DEFAULT_MAX_PARALLEL = 4;
 
 class ProviderRegistry {
   /**
@@ -112,7 +114,7 @@ class ProviderRegistry {
    * adapter ignores the supplied AbortSignal, it may continue after timeout.
    * Adapters must opt in to cancellation by observing request.signal.
    */
-  async dispatch(id, request) {
+  async dispatch(id, request, options = {}) {
     const providerId = id || this.defaultProvider;
     const entry = this.configured.get(providerId);
     const adapter = this.adapters.get(providerId);
@@ -121,25 +123,130 @@ class ProviderRegistry {
     }
 
     const safeRequest = this.validateRequest(entry, request);
+    const externalSignal = options.signal;
+    if (externalSignal !== undefined &&
+        (typeof externalSignal?.aborted !== "boolean" ||
+         typeof externalSignal.addEventListener !== "function" ||
+         typeof externalSignal.removeEventListener !== "function")) {
+      throw new TypeError("signal must be an AbortSignal");
+    }
+    if (externalSignal?.aborted) throw new Error(`provider ${providerId} cancelled`);
+
     const controller = new AbortController();
-    let timeoutHandle;
-    const timeoutSeconds = request.timeoutSeconds ?? entry.timeoutSeconds;
-    const timeout = new Promise((resolve, reject) => {
-      timeoutHandle = setTimeout(() => {
+    const timeoutSeconds = safeRequest.timeoutSeconds ?? entry.timeoutSeconds;
+    let timer;
+    let onExternalAbort;
+    const interruption = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
         controller.abort();
         reject(new Error(`provider ${providerId} timed out`));
       }, timeoutSeconds * 1000);
+      if (externalSignal) {
+        onExternalAbort = () => {
+          controller.abort();
+          reject(new Error(`provider ${providerId} cancelled`));
+        };
+        externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+        if (externalSignal.aborted) onExternalAbort();
+      }
     });
-    const work = Promise.resolve().then(() =>
-      adapter.analyze(Object.freeze({ ...safeRequest, signal: controller.signal }))
-    );
-
+    const work = Promise.resolve().then(() => {
+      if (controller.signal.aborted) throw new Error(`provider ${providerId} cancelled`);
+      return adapter.analyze(Object.freeze({ ...safeRequest, signal: controller.signal }));
+    });
     try {
-      const result = await Promise.race([work, timeout]);
+      const result = await Promise.race([work, interruption]);
+      if (controller.signal.aborted) throw new Error(`provider ${providerId} cancelled`);
       return validateProviderResult(result, providerId);
     } finally {
-      clearTimeout(timeoutHandle);
+      clearTimeout(timer);
+      if (onExternalAbort) externalSignal.removeEventListener("abort", onExternalAbort);
     }
+  }
+
+  /** Fully validate a batch before starting workers; return results in input order. */
+  async dispatchMany(targets, options = {}) {
+    if (!Array.isArray(targets)) throw new TypeError("targets must be an array");
+    if (!options || typeof options !== "object" || Array.isArray(options)) {
+      throw new TypeError("options must be an object");
+    }
+    for (const key of Object.keys(options)) {
+      if (key !== "maxParallel" && key !== "signal") {
+        throw new TypeError(`unknown dispatchMany option: ${key}`);
+      }
+    }
+    const maxParallel = options.maxParallel ?? DEFAULT_MAX_PARALLEL;
+    if (!Number.isInteger(maxParallel) || maxParallel < 1 || maxParallel > 16) {
+      throw new TypeError("maxParallel must be an integer from 1 to 16");
+    }
+    const signal = options.signal;
+    if (signal !== undefined &&
+        (typeof signal?.aborted !== "boolean" ||
+         typeof signal.addEventListener !== "function" ||
+         typeof signal.removeEventListener !== "function")) {
+      throw new TypeError("signal must be an AbortSignal");
+    }
+    const ids = new Set();
+    const planned = targets.map((target, index) => {
+      if (!target || typeof target !== "object" || Array.isArray(target)) {
+        throw new TypeError(`target ${index} must be an object`);
+      }
+      for (const key of Object.keys(target)) {
+        if (!TARGET_KEYS.has(key)) throw new TypeError(`unknown target field: ${key}`);
+      }
+      if (typeof target.id !== "string" || !target.id.trim()) {
+        throw new TypeError(`target ${index} requires a non-empty id`);
+      }
+      if (ids.has(target.id)) throw new TypeError(`duplicate target id: ${target.id}`);
+      ids.add(target.id);
+      if (typeof target.provider !== "string" || !target.provider.trim()) {
+        throw new TypeError(`target ${target.id} requires a provider ID`);
+      }
+      const entry = this.configured.get(target.provider);
+      if (!entry || !entry.enabled || !this.adapters.has(target.provider)) {
+        throw new Error(`target ${target.id} uses an unknown or disabled provider`);
+      }
+      const rawRequest = Object.fromEntries(
+        ["task", "model", "effort", "timeoutSeconds"]
+          .filter(key => Object.hasOwn(target, key))
+          .map(key => [key, target[key]])
+      );
+      const request = this.validateRequest(entry, rawRequest);
+      return Object.freeze({
+        id: target.id,
+        provider: target.provider,
+        model: entry.kind === "api" ? request.model : null,
+        request: Object.freeze(request)
+      });
+    });
+
+    const results = new Array(planned.length);
+    let nextIndex = 0;
+    const runSlot = async () => {
+      while (nextIndex < planned.length) {
+        const index = nextIndex++;
+        const target = planned[index];
+        const base = { id: target.id, provider: target.provider, model: target.model };
+        if (signal?.aborted) {
+          results[index] = { ...base, status: "failure", error: "cancelled" };
+          continue;
+        }
+        try {
+          const output = await this.dispatch(target.provider, target.request, { signal });
+          results[index] = {
+            ...base, status: "success",
+            output: { response: output.response, conversation_id: output.conversation_id, usage: output.usage }
+          };
+        } catch (error) {
+          const errorCode = signal?.aborted || /cancelled/.test(error?.message || "")
+            ? "cancelled"
+            : /timed out/.test(error?.message || "") ? "timed_out" : "worker_failed";
+          results[index] = { ...base, status: "failure", error: errorCode };
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(maxParallel, planned.length) }, runSlot));
+    return results;
   }
 }
 

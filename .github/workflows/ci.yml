@@ -29,3 +29,28 @@ jobs:
 
       - name: Run mocked test suite
         run: node --test
+
+  dotnet-regression:
+    name: Test / Windows / .NET 8
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+          architecture: x64
+
+      - name: Build Approval Agent Mock tests
+        run: dotnet build .\approval-agent\ApprovalAgent.MockTests\ApprovalAgent.MockTests.csproj --configuration Release
+
+      - name: Run Approval Agent Mock tests
+        run: dotnet run --no-build --no-restore --configuration Release --project .\approval-agent\ApprovalAgent.MockTests\ApprovalAgent.MockTests.csproj
+
+      - name: Build WebAuthn Fake Lab
+        run: dotnet build .\experiments\webauthn-windows-lab\WebAuthn.WindowsLab.csproj --configuration Release
+
+      - name: Run WebAuthn Fake Lab tests
+        run: dotnet run --no-build --no-restore --configuration Release --project .\experiments\webauthn-windows-lab\WebAuthn.WindowsLab.csproj

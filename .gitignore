@@ -40,3 +40,7 @@ Desktop.ini
 # User-generated approval/audit state (not for source control)
 approval-state/
 approval-logs/
+
+# .NET build artifacts
+bin/
+obj/

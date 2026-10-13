@@ -1,0 +1,152 @@
+<Window x:Class="ApprovalAgent.Mock.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Approval Agent — Mock Prototype"
+        Width="900"
+        Height="760"
+        MinWidth="620"
+        MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        KeyDown="Window_KeyDown"
+        AutomationProperties.Name="Approval Agent Mock Prototype">
+  <Grid Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Padding="24"
+                  Focusable="False">
+      <StackPanel MaxWidth="820"
+                  HorizontalAlignment="Stretch">
+        <Border Background="#FF7A1F1F"
+                CornerRadius="4"
+                Padding="12"
+                Margin="0,0,0,18">
+          <TextBlock Text="MOCK PROTOTYPE — NO REAL APPROVAL OR DISPATCH"
+                     Foreground="White"
+                     FontSize="18"
+                     FontWeight="Bold"
+                     TextWrapping="Wrap"
+                     AutomationProperties.Name="Mock prototype warning" />
+        </Border>
+
+        <TextBlock Text="Review proposal"
+                   FontSize="26"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,6" />
+        <TextBlock Text="This local demonstration displays synthetic content."
+                   Margin="0,0,0,18"
+                   TextWrapping="Wrap" />
+
+        <Border Background="#FFFFF4D6"
+                BorderBrush="#FFD3A148"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="16"
+                Margin="0,0,0,16">
+          <StackPanel>
+            <TextBlock Text="External transmission warning"
+                       FontSize="18"
+                       FontWeight="Bold"
+                       Margin="0,0,0,6" />
+            <TextBlock Text="{Binding ExternalTransmissionWarning}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8"
+                       AutomationProperties.Name="External transmission warning" />
+            <TextBlock Text="The destination uses the reserved .invalid domain."
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Grid Margin="0,0,0,16">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Provider"
+                     FontWeight="Bold" Margin="0,4,12,8" />
+          <TextBlock Grid.Row="0" Grid.Column="1"
+                     Text="{Binding Proposal.Provider}"
+                     TextWrapping="Wrap" Margin="0,4,0,8"
+                     AutomationProperties.Name="Provider" />
+
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="Model"
+                     FontWeight="Bold" Margin="0,4,12,8" />
+          <TextBlock Grid.Row="1" Grid.Column="1"
+                     Text="{Binding Proposal.Model}"
+                     TextWrapping="Wrap" Margin="0,4,0,8"
+                     AutomationProperties.Name="Model" />
+
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="Destination"
+                     FontWeight="Bold" Margin="0,4,12,8" />
+          <TextBlock Grid.Row="2" Grid.Column="1"
+                     Text="{Binding Proposal.Destination}"
+                     TextWrapping="Wrap" Margin="0,4,0,8"
+                     AutomationProperties.Name="External API destination" />
+
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="Task SHA-256"
+                     FontWeight="Bold" Margin="0,4,12,8" />
+          <TextBlock Grid.Row="3" Grid.Column="1"
+                     Text="{Binding Proposal.TaskSha256}"
+                     TextWrapping="Wrap" Margin="0,4,0,8"
+                     AutomationProperties.Name="Task SHA-256 hash" />
+
+          <TextBlock Grid.Row="4" Grid.Column="0" Text="Expires"
+                     FontWeight="Bold" Margin="0,4,12,0" />
+          <TextBlock Grid.Row="4" Grid.Column="1"
+                     Text="{Binding ExpiresAtDisplay}"
+                     TextWrapping="Wrap" Margin="0,4,0,0"
+                     AutomationProperties.Name="Expiration time in UTC" />
+        </Grid>
+
+        <TextBlock Text="Complete task content"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   Margin="0,0,0,6" />
+        <TextBox Text="{Binding Proposal.Task}"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Disabled"
+                 MinHeight="150"
+                 MaxHeight="280"
+                 Padding="10"
+                 Margin="0,0,0,16"
+                 AutomationProperties.Name="Complete task content, read only"
+                 AutomationProperties.HelpText="Scroll this field to review all task text." />
+
+        <TextBlock Text="{Binding StatusMessage}"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,12"
+                   AutomationProperties.LiveSetting="Polite"
+                   AutomationProperties.Name="Mock decision status" />
+
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+          <Button Content="_Reject"
+                  MinWidth="120"
+                  Padding="12,8"
+                  Margin="0,0,10,0"
+                  IsEnabled="{Binding CanReject}"
+                  Click="Reject_Click"
+                  AutomationProperties.Name="Reject mock proposal" />
+          <Button Content="Approve _Mock"
+                  MinWidth="150"
+                  Padding="12,8"
+                  IsEnabled="{Binding CanApprove}"
+                  Click="ApproveMock_Click"
+                  AutomationProperties.Name="Approve mock proposal only" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Window>

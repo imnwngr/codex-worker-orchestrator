@@ -10,6 +10,9 @@ public partial class MainWindow : Window
 {
     private readonly ApprovalViewModel _viewModel;
     private readonly DispatcherTimer _expiryTimer;
+    private readonly WebAuthnDiagnosticsViewModel _diagnosticsViewModel = new();
+    private readonly WindowsWebAuthnCapabilityDiagnosticService _diagnosticsService =
+        new(new WindowsWebAuthnNativeApi());
 
     public MainWindow()
     {
@@ -18,6 +21,7 @@ public partial class MainWindow : Window
         var proposal = new MockProposalSource().GetProposal();
         _viewModel = new ApprovalViewModel(proposal);
         DataContext = _viewModel;
+        WebAuthnDiagnosticsSection.DataContext = _diagnosticsViewModel;
 
         _expiryTimer = new DispatcherTimer
         {
@@ -26,6 +30,20 @@ public partial class MainWindow : Window
         _expiryTimer.Tick += ExpiryTimer_Tick;
         _expiryTimer.Start();
         Closed += (_, _) => _expiryTimer.Stop();
+    }
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var result = await Task.Run(_diagnosticsService.GetDiagnostics);
+            _diagnosticsViewModel.Apply(result);
+        }
+        catch
+        {
+            // Diagnostics must never affect the mock approval workflow.
+            _diagnosticsViewModel.ApplyFailure();
+        }
     }
 
     private void ApproveMock_Click(object sender, RoutedEventArgs e)

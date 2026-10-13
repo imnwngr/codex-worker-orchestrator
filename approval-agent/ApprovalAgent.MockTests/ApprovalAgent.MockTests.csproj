@@ -15,5 +15,7 @@
              Link="Services\IProposalSource.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Services\MockProposalSource.cs"
              Link="Services\MockProposalSource.cs" />
+    <Compile Include="..\ApprovalAgent.Mock\Services\WebAuthnCapabilityDiagnostics.cs"
+             Link="Services\WebAuthnCapabilityDiagnostics.cs" />
   </ItemGroup>
 </Project>

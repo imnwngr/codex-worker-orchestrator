@@ -90,6 +90,29 @@ This offers atomic in-memory one-time consumption **within one instance** only.
 It is not cross-process/durable replay protection or crash recovery. The audit
 callback receives redacted metadata, not task text, keys, or assertion bytes.
 
+## Windows desktop capability diagnostics
+
+The separate WPF mock application may query the Windows WebAuthn API version
+and whether a user-verifying platform authenticator is reported available.
+This is a read-only capability query; it does not create credentials, request
+assertions, show a user-verification prompt, or establish USER approval.
+
+The offline verifier accepts only ES256 (`-7`) and RS256 (`-257`) credential
+keys from its trusted registry. A capability query does not disclose which
+algorithm a future credential registration will select and does not prove
+that any credential has been enrolled. A future enrollment flow must obtain
+and validate credential ID, public key, and algorithm through a trusted
+registration path, then provision that registry from a protected source.
+
+The verifier also requires exact `clientDataJSON` bytes with
+`type = "webauthn.get"`, an exact trusted origin, and a DNS RP ID whose hash
+matches authenticator data. A native desktop caller does not inherently have
+the browser origin assumed by the synthetic verifier. This project has not
+defined or validated a desktop origin/RP ID convention. Do not invent a
+production trust anchor or accept origin, RP ID, or credentials from a
+proposal/request to bridge this gap.
+
+
 ## Security limits and required work
 
 1. Verify Windows Hello / WebAuthn algorithms and ceremony behavior on target

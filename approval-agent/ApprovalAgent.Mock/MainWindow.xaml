@@ -8,6 +8,7 @@
         MinHeight="560"
         WindowStartupLocation="CenterScreen"
         KeyDown="Window_KeyDown"
+        Loaded="Window_Loaded"
         AutomationProperties.Name="Approval Agent Mock Prototype">
   <Grid Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
     <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -35,6 +36,45 @@
         <TextBlock Text="This local demonstration displays synthetic content."
                    Margin="0,0,0,18"
                    TextWrapping="Wrap" />
+
+        <Border x:Name="WebAuthnDiagnosticsSection"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="16"
+                Margin="0,0,0,16"
+                AutomationProperties.Name="Read-only Windows WebAuthn capability diagnostics">
+          <StackPanel>
+            <TextBlock Text="Read-only Windows WebAuthn capability diagnostics"
+                       FontSize="18"
+                       FontWeight="Bold"
+                       Margin="0,0,0,6" />
+            <TextBlock Text="No credential operation or user-verification prompt is performed."
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,10" />
+            <TextBlock Text="{Binding LibraryStatus, StringFormat='webauthn.dll: {0}'}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="WebAuthn DLL availability" />
+            <TextBlock Text="{Binding ApiStatus, StringFormat='Native API: {0}'}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Native WebAuthn API availability" />
+            <TextBlock Text="{Binding VersionStatus, StringFormat='API version: {0}'}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="WebAuthn API version support" />
+            <TextBlock Text="{Binding AuthenticatorStatus, StringFormat='User-verifying platform authenticator: {0}'}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Platform authenticator availability" />
+            <TextBlock Text="{Binding ErrorStatus, StringFormat='Diagnostic details: {0}'}"
+                       TextWrapping="Wrap"
+                       Margin="0,8,0,0"
+                       AutomationProperties.Name="WebAuthn diagnostic errors" />
+            <TextBlock Text="Availability does not prove Windows Hello enrollment, credential presence, user identity, application integrity, or USER approval."
+                       TextWrapping="Wrap"
+                       FontWeight="SemiBold"
+                       Margin="0,10,0,0" />
+          </StackPanel>
+        </Border>
+
 
         <Border Background="#FFFFF4D6"
                 BorderBrush="#FFD3A148"

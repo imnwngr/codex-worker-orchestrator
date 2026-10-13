@@ -13,7 +13,15 @@ var tests = new (string Name, Action Run)[]
     ("reject action changes only in-memory mock state", RejectIsLocalState),
     ("terminal states cannot be changed by later actions", TerminalStateIsStable),
     ("fixed proposal stays synthetic and cannot reach a live endpoint", SourceIsMockOnly),
-    ("review model exposes a prominent complete-task warning", TransmissionWarning)
+    ("review model exposes a prominent complete-task warning", TransmissionWarning),
+    ("reports supported API and available platform authenticator", SupportedCapability),
+    ("reports supported API and unavailable platform authenticator", NoPlatformAuthenticator),
+    ("does not query an unsupported API version", UnsupportedApiVersion),
+    ("reports native HRESULT failures as unknown", NativeQueryError),
+    ("rejects nonzero HRESULT even when positive", PositiveHResultIsNotSuccess),
+    ("contains exceptions and leaves mock approval independent", DiagnosticExceptionIsIsolated),
+    ("reports missing DLL and API as unavailable", MissingNativeLibrary),
+    ("handles missing required native export as unavailable", MissingNativeExport)
 };
 
 var failures = 0;
@@ -124,6 +132,126 @@ static void TransmissionWarning()
         "Warning must clearly distinguish the mock from real dispatch.");
 }
 
+static void SupportedCapability()
+{
+    var native = new FakeNativeApi(new FakeSession(1, 0, true));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+
+    Equal(CapabilityAvailability.Available, result.LibraryAvailability, "DLL should be available.");
+    Equal(CapabilityAvailability.Available, result.ApiAvailability, "API should be available.");
+    Equal((uint?)1, result.ApiVersion, "Expected API version 1.");
+    Equal(ApiVersionSupport.Supported, result.VersionSupport, "Version 1 is supported.");
+    Equal(CapabilityAvailability.Available, result.PlatformAuthenticatorAvailability,
+        "Native query reports an available platform authenticator.");
+    Equal(1, native.Session!.AvailabilityQueryCount, "Availability function should be called once.");
+}
+
+static void NoPlatformAuthenticator()
+{
+    var native = new FakeNativeApi(new FakeSession(1, 0, false));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+
+    Equal(CapabilityAvailability.Unavailable, result.PlatformAuthenticatorAvailability,
+        "A successful FALSE response means unavailable.");
+    Equal(null, result.Error, "A successful negative result is not an API error.");
+}
+
+static void UnsupportedApiVersion()
+{
+    var native = new FakeNativeApi(new FakeSession(0, 0, true));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+
+    Equal(CapabilityAvailability.Available, result.ApiAvailability,
+        "The exported API functions were found.");
+    Equal(ApiVersionSupport.Unsupported, result.VersionSupport,
+        "Version zero is below the supported minimum.");
+    Equal(CapabilityAvailability.Unknown, result.PlatformAuthenticatorAvailability,
+        "Do not query the authenticator on an unsupported API version.");
+    Equal(0, native.Session!.AvailabilityQueryCount,
+        "The unsupported platform must not be queried.");
+}
+
+static void NativeQueryError()
+{
+    var native = new FakeNativeApi(
+        new FakeSession(1, unchecked((int)0x80004005), true));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+
+    Equal(CapabilityAvailability.Unknown, result.PlatformAuthenticatorAvailability,
+        "A failed HRESULT cannot be interpreted as an unavailable authenticator.");
+    True(result.Error?.Contains("80004005", StringComparison.Ordinal) == true,
+        "The HRESULT should be preserved in diagnostics.");
+}
+
+static void PositiveHResultIsNotSuccess()
+{
+    var native = new FakeNativeApi(new FakeSession(1, 1, true));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+    Equal(CapabilityAvailability.Unknown, result.PlatformAuthenticatorAvailability,
+        "Only S_OK (0) is success; other status values must not be treated as approval capability.");
+    True(result.Error?.Contains("00000001", StringComparison.Ordinal) == true,
+        "Unexpected positive HRESULT should be reported.");
+}
+
+static void DiagnosticExceptionIsIsolated()
+{
+    var diagnostic = new WindowsWebAuthnCapabilityDiagnosticService(
+        new ThrowingNativeApi());
+    var result = diagnostic.GetDiagnostics();
+    var diagnosticsViewModel = new WebAuthnDiagnosticsViewModel();
+    diagnosticsViewModel.Apply(result);
+
+    var now = DateTimeOffset.Parse("2030-01-02T03:04:05Z");
+    var approvalViewModel = new ApprovalViewModel(
+        Proposal("sample", now.AddMinutes(1)), () => now);
+
+    Equal(CapabilityAvailability.Unknown.ToString(), diagnosticsViewModel.ApiStatus,
+        "A diagnostic exception should become an unknown status.");
+    True(diagnosticsViewModel.ErrorStatus.Contains("could not load", StringComparison.OrdinalIgnoreCase),
+        "The diagnostic error should be visible.");
+    True(approvalViewModel.CanApprove,
+        "A diagnostic failure must not activate or disable mock approval.");
+    Equal(MockApprovalState.Pending, approvalViewModel.State,
+        "A diagnostic failure must not change approval state.");
+}
+
+static void MissingNativeLibrary()
+{
+    var native = new FakeNativeApi(
+        new WebAuthnNativeOpenResult(
+            CapabilityAvailability.Unavailable,
+            CapabilityAvailability.Unavailable,
+            null,
+            "webauthn.dll was not found."));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+
+    Equal(CapabilityAvailability.Unavailable, result.LibraryAvailability,
+        "Missing library should be reported unavailable.");
+    Equal(CapabilityAvailability.Unavailable, result.ApiAvailability,
+        "Missing library means the API is unavailable.");
+    Equal(CapabilityAvailability.Unknown, result.PlatformAuthenticatorAvailability,
+        "No authenticator result is available when the API is missing.");
+}
+
+static void MissingNativeExport()
+{
+    var native = new FakeNativeApi(
+        new WebAuthnNativeOpenResult(
+            CapabilityAvailability.Available,
+            CapabilityAvailability.Unavailable,
+            null,
+            "A required WebAuthn API function is unavailable: EntryPointNotFoundException"));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+
+    Equal(CapabilityAvailability.Available, result.LibraryAvailability,
+        "A missing export does not mean the DLL is absent.");
+    Equal(CapabilityAvailability.Unavailable, result.ApiAvailability,
+        "A missing required native export makes the API unavailable.");
+    Equal(CapabilityAvailability.Unknown, result.PlatformAuthenticatorAvailability,
+        "Do not infer authenticator availability without a complete native API.");
+    True(result.Error?.Contains("required WebAuthn API function", StringComparison.Ordinal) == true,
+        "The missing-export condition should be exposed in diagnostics.");
+}
 static ApprovalProposal Proposal(
     string task,
     DateTimeOffset? expiresAt = null) =>
@@ -146,4 +274,39 @@ static void Equal<T>(T expected, T actual, string message)
 static void True(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
+}
+
+sealed class FakeNativeApi : IWebAuthnNativeApi
+{
+    private readonly WebAuthnNativeOpenResult _openResult;
+
+    public FakeNativeApi(FakeSession session)
+        : this(new WebAuthnNativeOpenResult(
+            CapabilityAvailability.Available, CapabilityAvailability.Available, session, null)) { }
+
+    public FakeNativeApi(WebAuthnNativeOpenResult openResult) => _openResult = openResult;
+
+    public FakeSession? Session => _openResult.Session as FakeSession;
+    public WebAuthnNativeOpenResult Open() => _openResult;
+}
+
+sealed class FakeSession(uint version, int hresult, bool available) : IWebAuthnNativeSession
+{
+    public int AvailabilityQueryCount { get; private set; }
+    public uint GetApiVersionNumber() => version;
+
+    public int IsUserVerifyingPlatformAuthenticatorAvailable(out bool result)
+    {
+        AvailabilityQueryCount++;
+        result = available;
+        return hresult;
+    }
+
+    public void Dispose() { }
+}
+
+sealed class ThrowingNativeApi : IWebAuthnNativeApi
+{
+    public WebAuthnNativeOpenResult Open() =>
+        throw new InvalidOperationException("test diagnostic failure");
 }

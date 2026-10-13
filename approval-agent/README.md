@@ -22,6 +22,26 @@ No third-party NuGet packages are used. The `ApprovalAgent.MockTests` project
 is a package-free console test harness. It links the pure model and view-model
 source files directly, so it does not require WPF to test domain behavior.
 
+## Read-only WebAuthn capability diagnostics
+
+The application reports whether the Windows `webauthn.dll` and required API
+functions are available, the reported API version, and the result of the
+platform-authenticator availability query. It does not create or enumerate
+credentials, sign data, request an assertion, or show a Windows Hello prompt.
+
+This result is not evidence that Windows Hello is enrolled, that a credential
+exists, that the USER is present, or that an approval occurred. Native
+capability reporting also does not establish whether an enrolled credential
+uses an algorithm accepted by the offline verifier.
+
+The offline verifier requires trusted credential registration, ES256 or
+RS256-compatible public keys, an exact `clientDataJSON` challenge, and pinned
+origin/RP ID values. A desktop application still has no established trusted
+origin/RP ID convention in this project. See
+[`WEBAUTHN_OFFLINE_PROTOCOL.md`](../broker/docs/WEBAUTHN_OFFLINE_PROTOCOL.md)
+for its remaining enrollment and trust requirements.
+
+
 ## Build and run
 
 Run from the repository root in regular Windows PowerShell:

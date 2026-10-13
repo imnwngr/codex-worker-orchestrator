@@ -72,6 +72,20 @@ test("requires HTTPS API URLs without embedded credentials or query parts", () =
   assert.equal(config.providers[1].baseUrl, "https://api.one.example/v1");
 });
 
+test("rejects loopback, local, internal, and IP literal API hosts", () => {
+  for (const baseUrl of [
+    "https://localhost/v1",
+    "https://service.local/v1",
+    "https://service.internal/v1",
+    "https://127.0.0.1/v1",
+    "https://[::1]/v1"
+  ]) {
+    const config = valid();
+    config.providers[1].baseUrl = baseUrl;
+    assert.throws(() => validateConfig(config), /public hostname/);
+  }
+});
+
 
 test("rejects invalid timeouts", () => {
   for (const timeoutSeconds of [0, -1, 601, 1.5, "20"]) {

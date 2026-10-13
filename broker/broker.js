@@ -2,9 +2,9 @@
 
 const http = require("http");
 const crypto = require("crypto");
-const { validateConfig } = require("./providers/config");
+const { loadConfig } = require("./providers/config-loader");
 const { ProviderRegistry } = require("./providers/registry");
-const { createAntigravityProvider } = require("./providers/antigravity");
+const { createRuntimeAdapters } = require("./providers/runtime");
 
 const HOST = "127.0.0.1";
 const PORT = 8765;
@@ -12,17 +12,6 @@ const PORT = 8765;
 const MAX_BODY = 256 * 1024;
 const DEFAULT_TIMEOUT = 300;
 const MAX_TIMEOUT = 600;
-const CONFIG = validateConfig({
-  version: 1,
-  defaultProvider: "antigravity",
-  providers: [{
-    id: "antigravity",
-    kind: "cli",
-    enabled: true,
-    timeoutSeconds: MAX_TIMEOUT,
-    efforts: ["low", "medium", "high", "xhigh", "max"]
-  }]
-});
 
 function send(res, status, obj) {
   const body = JSON.stringify(obj);
@@ -37,13 +26,28 @@ function send(res, status, obj) {
 }
 
 function createBrokerServer(options = {}) {
-  const adapter = options.adapter || createAntigravityProvider({
-    spawnProcess: options.spawnProcess,
-    env: options.env,
-    setTimeout: options.setTimeout,
-    clearTimeout: options.clearTimeout
-  });
-  const registry = options.registry || new ProviderRegistry(CONFIG, [adapter]);
+  // Load and validate the complete file synchronously before returning a
+  // server, so invalid configuration cannot leave a partially started host.
+  const config = options.config || loadConfig(options.configPath);
+  const adapters = options.adapters || (options.adapter
+    ? [options.adapter]
+    : createRuntimeAdapters(config, {
+        antigravity: {
+          spawnProcess: options.spawnProcess,
+          env: options.env,
+          setTimeout: options.setTimeout,
+          clearTimeout: options.clearTimeout
+        },
+        api: {
+          env: options.env,
+          fetch: options.fetch,
+          setTimeout: options.setTimeout,
+          clearTimeout: options.clearTimeout
+        }
+      }));
+  const registry = options.registry || new ProviderRegistry(config, adapters);
+  // The legacy HTTP route deliberately remains pinned to Antigravity.
+  registry.get("antigravity");
   const logger = options.logger || console;
 
   return http.createServer(async (req, res) => {
@@ -181,12 +185,17 @@ function createBrokerServer(options = {}) {
 }
 
 if (require.main === module) {
-  const server = createBrokerServer();
-  server.listen(PORT, HOST, () => {
-    console.log(`Codex Worker Broker listening on http://${HOST}:${PORT}`);
-    console.log("Provider: antigravity");
-    console.log("Mode: analysis-only");
-  });
+  try {
+    const server = createBrokerServer();
+    server.listen(PORT, HOST, () => {
+      console.log(`Codex Worker Broker listening on http://${HOST}:${PORT}`);
+      console.log("Provider: antigravity");
+      console.log("Mode: analysis-only");
+    });
+  } catch {
+    console.error("Codex Worker Broker could not start: invalid provider configuration");
+    process.exitCode = 1;
+  }
 }
 
 module.exports = { createBrokerServer };

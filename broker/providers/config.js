@@ -1,5 +1,6 @@
 "use strict";
 
+const net = require("node:net");
 const TOP_KEYS = new Set(["version", "defaultProvider", "providers"]);
 const BASE_PROVIDER_KEYS = new Set(["id", "kind", "enabled", "timeoutSeconds"]);
 const API_KEYS = new Set([
@@ -27,6 +28,20 @@ function assertOnlyKeys(value, allowed, path) {
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) fail(path, `unknown field '${key}'`);
   }
+}
+
+function isUnsafeHostname(hostname) {
+  const host = hostname.toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal")
+  ) return true;
+
+  // IP literals are rejected so configuration cannot point an API adapter
+  // directly at loopback, link-local, private, or other non-public addresses.
+  return net.isIP(host) !== 0;
 }
 
 function validateConfig(config) {
@@ -70,8 +85,10 @@ function validateConfig(config) {
       }
       let baseUrl;
       try { baseUrl = new URL(provider.baseUrl); } catch { fail(`${path}.baseUrl`, "must be a valid HTTPS URL"); }
-      if (baseUrl.protocol !== "https:" || !baseUrl.hostname || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {
-        fail(`${path}.baseUrl`, "must use HTTPS and contain no credentials, query, or fragment");
+      if (baseUrl.protocol !== "https:" || !baseUrl.hostname ||
+          baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash ||
+          isUnsafeHostname(baseUrl.hostname)) {
+        fail(`${path}.baseUrl`, "must use HTTPS with a public hostname and contain no credentials, query, or fragment");
       }
       if (!Array.isArray(provider.models) || provider.models.length === 0) {
         fail(`${path}.models`, "must be a non-empty array");

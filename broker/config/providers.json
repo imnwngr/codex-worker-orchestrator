@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "defaultProvider": "antigravity",
+  "providers": [
+    {
+      "id": "antigravity",
+      "kind": "cli",
+      "enabled": true,
+      "timeoutSeconds": 600,
+      "efforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "id": "api-provider-one",
+      "kind": "api",
+      "enabled": false,
+      "baseUrl": "https://api.example.invalid/v1",
+      "timeoutSeconds": 120,
+      "models": ["model-alpha", "model-beta"],
+      "defaultModel": "model-alpha",
+      "credentialEnv": "API_PROVIDER_ONE_KEY"
+    },
+    {
+      "id": "api-provider-two",
+      "kind": "api",
+      "enabled": false,
+      "baseUrl": "https://api.example.invalid/v1",
+      "timeoutSeconds": 120,
+      "models": ["model-gamma", "model-delta"],
+      "defaultModel": "model-gamma",
+      "credentialEnv": "API_PROVIDER_TWO_KEY"
+    }
+  ]
+}

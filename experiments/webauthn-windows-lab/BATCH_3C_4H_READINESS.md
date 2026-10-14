@@ -42,11 +42,12 @@ replace user-writable binaries, spoof UI, and issue its own WebAuthn requests.
 
 ## Readiness
 
-The informational evaluator reports synthetic test and read-only diagnostic
-readiness while keeping real enrollment, assertion, deletion, and production
-authorization blocked. A dedicated disposable environment and separate
-explicit USER approval for each real credential operation would be required
-for any later phase. No status in this report converts into permission.
+The evaluator reports synthetic test status as unverified until it receives
+test-run evidence, and read-only runtime capability as not observed unless a
+diagnostic actually ran. It does not infer current machine facts from a prior
+observation. Real enrollment, assertion, deletion, and production authorization
+remain blocked. See `BATCH_3C_4I_ASSURANCE.md` for the invariant audit and
+current evidence categories. No status in the report converts into permission.
 
 Statuses: `SYNTHETIC_TEST_READY`, `READ_ONLY_DIAGNOSTIC_READY`,
 `REAL_CREDENTIAL_ENROLLMENT_BLOCKED`, `REAL_CREDENTIAL_ASSERTION_BLOCKED`,

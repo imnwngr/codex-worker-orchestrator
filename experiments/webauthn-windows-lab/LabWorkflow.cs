@@ -35,6 +35,8 @@ internal sealed class LabWorkflow
     private string? _enrollmentOperationId;
     private int _cleanupAttempts;
     private LabState _cleanupPreState;
+    // A malformed or colliding returned ID cannot be resolved by inventory alone.
+    private bool _enrollmentIdentityConflict;
 
     public LabWorkflow(
         IFakeNativeWebAuthn native,
@@ -79,6 +81,13 @@ internal sealed class LabWorkflow
             if (idBytes.Length is < 16 or > 512)
                 throw new InvalidDataException("credential_id_length");
             var id = ToBase64Url(idBytes);
+            if (_credentialIdsBeforeEnrollment.Contains(id))
+            {
+                _enrollmentIdentityConflict = true;
+                throw new FakeNativeFailureException(
+                    "Registration returned an ID present before the operation.",
+                    outcomeUnknown: true);
+            }
             OrphanCredentialId = id;
             State = LabState.CreatedUnpinned;
             _journal.Record(_enrollmentOperationId, RecoveryOperation.Enrollment,
@@ -106,6 +115,19 @@ internal sealed class LabWorkflow
         }
         catch (FakeNativeFailureException error) when (error.OrphanCredentialId is not null)
         {
+            // A well-formed claimed ID alone is not evidence that this fake
+            // operation created it. Require operation-bound synthetic provenance.
+            if (!error.SyntheticOrphanIdBoundToOperation ||
+                !SyntheticInventory.IsCanonicalCredentialId(error.OrphanCredentialId) ||
+                _credentialIdsBeforeEnrollment.Contains(error.OrphanCredentialId))
+            {
+                _enrollmentIdentityConflict = true;
+                State = LabState.EnrollmentOutcomeUnknown;
+                _journal.Record(_enrollmentOperationId!, RecoveryOperation.Enrollment,
+                    State, RecoveryOutcome.Unknown,
+                    errorCode: "registration_recovery_id_invalid_or_preexisting");
+                throw;
+            }
             OrphanCredentialId = error.OrphanCredentialId;
             State = LabState.OrphanedCredential;
             _journal.Record(_enrollmentOperationId!, RecoveryOperation.Enrollment,
@@ -143,27 +165,31 @@ internal sealed class LabWorkflow
         {
             var inventory = SyntheticInventory.Validate(
                 await _native.SimulateCredentialInventoryAsync(cancellationToken));
-            var added = inventory.Where(id => !_credentialIdsBeforeEnrollment.Contains(id))
-                .ToArray();
-            if (added.Length == 1)
+            // A reported malformed or pre-existing registration identity cannot
+            // be disambiguated by a later inventory snapshot, even if it vanishes.
+            if (_enrollmentIdentityConflict)
             {
-                OrphanCredentialId = added[0];
-                State = LabState.OrphanedCredential;
                 _journal.Record(operationId, RecoveryOperation.Reconciliation,
-                    State, RecoveryOutcome.Succeeded, credentialId: OrphanCredentialId);
+                    State, RecoveryOutcome.Unknown,
+                    errorCode: "registration_identity_conflict_unresolved");
                 return;
             }
 
-            if (added.Length == 0)
+            // Equality must cover BOTH additions and losses. Merely observing
+            // no new IDs would incorrectly reset Unknown when a baseline ID
+            // disappeared or was replaced during the interrupted operation.
+            if (!inventory.SetEquals(_credentialIdsBeforeEnrollment))
             {
-                State = LabState.Ready;
                 _journal.Record(operationId, RecoveryOperation.Reconciliation,
-                    State, RecoveryOutcome.Succeeded, errorCode: "fake_inventory_confirms_no_new_id");
+                    State, RecoveryOutcome.Unknown,
+                    errorCode: "inventory_changed_without_operation_binding");
                 return;
             }
 
+            State = LabState.Ready;
             _journal.Record(operationId, RecoveryOperation.Reconciliation,
-                State, RecoveryOutcome.Unknown, errorCode: "multiple_new_fake_ids");
+                State, RecoveryOutcome.Succeeded,
+                errorCode: "fake_inventory_matches_pre_operation_snapshot");
         }
         catch
         {
@@ -177,7 +203,9 @@ internal sealed class LabWorkflow
     public async Task RecoverOrphanAsync(CancellationToken cancellationToken)
     {
         if (State is not (LabState.OrphanedCredential or LabState.CreatedUnpinned) ||
-            OrphanCredentialId is null)
+            OrphanCredentialId is null ||
+            !SyntheticInventory.IsCanonicalCredentialId(OrphanCredentialId) ||
+            _credentialIdsBeforeEnrollment.Contains(OrphanCredentialId))
             throw new InvalidOperationException("No simulated orphan is available.");
         await DeleteAndReconcileAsync(OrphanCredentialId, cancellationToken, isOrphan: true);
     }
@@ -265,8 +293,8 @@ internal sealed class LabWorkflow
         var operationId = _journal.Begin(RecoveryOperation.Reconciliation, State);
         try
         {
-            var inventory = SyntheticInventory.Validate(
-                await _native.SimulateCredentialInventoryAsync(cancellationToken));
+            var inventory = ValidateCleanupInventory(
+                await _native.SimulateCredentialInventoryAsync(cancellationToken), id);
             if (!inventory.Contains(id))
             {
                 if (isOrphan)
@@ -329,8 +357,8 @@ internal sealed class LabWorkflow
         {
             await _native.SimulatePlatformCredentialDeletionAsync(
                 credentialId, cancellationToken);
-            var inventory = SyntheticInventory.Validate(
-                await _native.SimulateCredentialInventoryAsync(cancellationToken));
+            var inventory = ValidateCleanupInventory(
+                await _native.SimulateCredentialInventoryAsync(cancellationToken), credentialId);
             if (inventory.Contains(credentialId))
                 throw new FakeNativeFailureException("Fake inventory still contains the ID.");
 
@@ -414,6 +442,19 @@ internal sealed class LabWorkflow
             AmbiguityOrMissingEvidence = ambiguity,
             FinalOutcome = outcome
         };
+    }
+
+    private HashSet<string> ValidateCleanupInventory(
+        IReadOnlyCollection<string>? inventory, string expectedCredentialId)
+    {
+        var identities = SyntheticInventory.Validate(inventory);
+        foreach (var identity in identities)
+        {
+            if (!_credentialIdsBeforeEnrollment.Contains(identity) &&
+                !StringComparer.Ordinal.Equals(identity, expectedCredentialId))
+                throw new InvalidDataException("fake_inventory_contains_unrecognized_id");
+        }
+        return identities;
     }
 
     private static string ToBase64Url(byte[] bytes) =>

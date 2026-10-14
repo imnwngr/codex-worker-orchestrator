@@ -10,19 +10,30 @@ internal static class SyntheticInventory
 
     public static HashSet<string> Validate(IReadOnlyCollection<string>? inventory)
     {
-        if (inventory is null || inventory.Count > MaximumEntries)
+        if (inventory is null)
+            throw new InvalidDataException("fake_inventory_missing_or_oversized");
+
+        // IReadOnlyCollection is an interface contract, not a trusted count.
+        // Check the declared value, then independently bound enumeration and
+        // require the two counts to agree before accepting the snapshot.
+        var declaredCount = inventory.Count;
+        if (declaredCount is < 0 or > MaximumEntries)
             throw new InvalidDataException("fake_inventory_missing_or_oversized");
 
         var identities = new HashSet<string>(StringComparer.Ordinal);
         foreach (var identity in inventory)
         {
+            if (identities.Count >= MaximumEntries || identities.Count >= declaredCount)
+                throw new InvalidDataException("fake_inventory_count_mismatch_or_oversized");
             if (!IsCanonicalCredentialId(identity) || !identities.Add(identity!))
                 throw new InvalidDataException("fake_inventory_invalid_or_duplicate_id");
         }
+        if (identities.Count != declaredCount)
+            throw new InvalidDataException("fake_inventory_count_mismatch");
         return identities;
     }
 
-    private static bool IsCanonicalCredentialId(string? id)
+    internal static bool IsCanonicalCredentialId(string? id)
     {
         if (string.IsNullOrEmpty(id) || id.Length > 683 ||
             id.Any(character => !((character >= 'A' && character <= 'Z') ||

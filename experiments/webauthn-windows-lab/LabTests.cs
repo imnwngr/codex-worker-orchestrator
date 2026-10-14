@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace WebAuthn.WindowsLab;
 
@@ -54,7 +55,18 @@ internal static class LabTests
         ("store continuation cannot bypass validated transitions", StoreContinuationIsValidated),
         ("unanchored synthetic restore cannot fabricate credential state", StoreRestoreRequiresValidGenesis),
         ("replaced replay ledger blocks further consumption", StoreReplacedLedgerBlocksConsumption),
-        ("synthetic trust handles missing nested evidence and empty labels", TrustMissingNestedEvidence)
+        ("synthetic trust handles missing nested evidence and empty labels", TrustMissingNestedEvidence),
+        ("inventory enumeration is bounded independently of Count", LyingInventoryCountIsRejected),
+        ("unknown enrollment inventory delta is never treated as the operation credential", UnknownEnrollmentIdRemainsUntrusted),
+        ("registration ID colliding with baseline cannot be cleaned or trusted", RegistrationIdCollision),
+        ("cleanup reconciliation rejects unrecognized inventory identities", CleanupRejectsUnexpectedInventoryIdentity),
+        ("malformed lost-response ID cannot become a deletion target", MalformedOrphanIdCannotBeDeleted),
+        ("all journal transition pairs match an independent bounded model", JournalTransitionMatrix),
+        ("unknown enrollment cannot become ready after losing a baseline ID", EnrollmentBaselineLossRemainsUnknown),
+        ("disappearing collided identity cannot resolve ambiguous enrollment", DisappearingCollisionRemainsUnknown),
+        ("malformed response identity stays blocked even with matching inventory", MalformedRecoveryIdentityRemainsUnknown),
+        ("synthetic collision injection never removes an existing credential", CollisionInjectionPreservesExistingCredential),
+        ("valid-looking unbound orphan ID cannot become a deletion target", UnboundValidOrphanIdCannotBeDeleted)
     ];
 
     public static int Count => Tests.Count;
@@ -387,10 +399,11 @@ internal static class LabTests
         await ThrowsAsync<InvalidOperationException>(() => workflow.EnrollAsync(default));
 
         await workflow.ReconcileUnknownEnrollmentAsync(default);
-        Equal(LabState.OrphanedCredential, workflow.State,
-            "One new fake inventory ID becomes an orphan.");
-        await workflow.RecoverOrphanAsync(default);
-        Equal(LabState.Ready, workflow.State, "Known orphan is removed and reconciled.");
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "Inventory delta alone does not identify the credential from the attempted operation.");
+        True(workflow.OrphanCredentialId is null,
+            "Unbound inventory IDs are never promoted to cleanup targets.");
+        await ThrowsAsync<InvalidOperationException>(() => workflow.EnrollAsync(default));
 
         var noCreateNative = new FakeNativeWebAuthn
         {
@@ -601,8 +614,8 @@ internal static class LabTests
         Equal(RecoveryOutcome.Unknown, workflow.Journal.Current.Outcome,
             "Journal preserves unknown outcome when reconciliation fails.");
         await workflow.ReconcileUnknownEnrollmentAsync(default);
-        Equal(LabState.OrphanedCredential, workflow.State,
-            "Known synthetic orphan becomes recoverable after inventory responds.");
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "Inventory availability cannot bind the new ID to the unknown registration.");
     }
 
     private static Task ConcurrentFakeConsumption()
@@ -654,8 +667,10 @@ internal static class LabTests
         Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
             "Duplicate IDs cannot be silently deduplicated or confirm an orphan.");
         await workflow.ReconcileUnknownEnrollmentAsync(default);
-        Equal(LabState.OrphanedCredential, workflow.State,
-            "A subsequent valid snapshot permits explicit recovery.");
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "A valid but unbound new inventory ID remains unknown.");
+        True(workflow.OrphanCredentialId is null,
+            "Reconciliation does not turn an arbitrary inventory ID into an orphan.");
     }
 
     private static async Task MalformedCleanupInventory()
@@ -776,20 +791,64 @@ internal static class LabTests
         };
         Equal(TrustAssessment.BLOCKED, SyntheticTrustEvaluator.Evaluate(rp).Status,
             "Caller substituted RP configuration is blocked.");
+        var binaryConflict = evidence with
+        {
+            Binary = new BinaryIntegrityEvidence(
+                new Evidence<string>("different-executable", SyntheticEvidenceSource.SyntheticFixture),
+                evidence.Binary.DigestFixture)
+        };
+        Equal(TrustAssessment.CONTRADICTORY_EVIDENCE,
+            SyntheticTrustEvaluator.Evaluate(binaryConflict).Status,
+            "Integrity evidence bound to another executable fixture is contradictory.");
+        var credentialConflict = evidence with
+        {
+            Credential = new CredentialPossessionEvidence(
+                new Evidence<string>("different-authenticator", SyntheticEvidenceSource.SyntheticFixture),
+                evidence.Credential.CredentialFixture)
+        };
+        Equal(TrustAssessment.CONTRADICTORY_EVIDENCE,
+            SyntheticTrustEvaluator.Evaluate(credentialConflict).Status,
+            "Credential evidence bound to another authenticator is contradictory.");
         return Task.CompletedTask;
     }
 
     private static Task ReadinessIsInformational()
     {
         var report = ExperimentalReadinessEvaluator.Evaluate();
-        foreach (var status in Enum.GetValues<ReadinessStatus>())
+        foreach (var status in new[]
+        {
+            ReadinessStatus.SYNTHETIC_TEST_UNVERIFIED,
+            ReadinessStatus.READ_ONLY_DIAGNOSTIC_NOT_OBSERVED,
+            ReadinessStatus.REAL_CREDENTIAL_ENROLLMENT_BLOCKED,
+            ReadinessStatus.REAL_CREDENTIAL_ASSERTION_BLOCKED,
+            ReadinessStatus.REAL_CREDENTIAL_DELETION_BLOCKED,
+            ReadinessStatus.PRODUCTION_AUTHORIZATION_BLOCKED
+        })
             True(report.Statuses.Contains(status), $"Readiness must report {status}.");
+        True(!report.Statuses.Contains(ReadinessStatus.SYNTHETIC_TEST_READY) &&
+            !report.Statuses.Contains(ReadinessStatus.READ_ONLY_DIAGNOSTIC_READY),
+            "Readiness must not mark tests or runtime diagnostics ready without evidence.");
         True(report.ApplicationIdentity.Contains("untrusted", StringComparison.OrdinalIgnoreCase),
             "Runtime identity remains untrusted.");
-        True(report.UserApproval.Contains("Separate explicit USER approval", StringComparison.Ordinal),
-            "Each real operation requires separate explicit approval.");
         True(report.ReplayProtection.Contains("not durable", StringComparison.OrdinalIgnoreCase),
             "No production-grade durable replay protection is claimed.");
+        True(report.ObservedReadOnlyRuntimeCapability.Contains("NOT_OBSERVED", StringComparison.Ordinal),
+            "Evaluator does not invent a current runtime observation.");
+        True(report.DocumentedSdkRequirements.Contains("SDK_DOCUMENTED_ONLY", StringComparison.Ordinal),
+            "SDK thresholds are separated from runtime observations.");
+        True(report.UserReportedRuntimeObservation.Contains("NOT_SUPPLIED", StringComparison.Ordinal) &&
+            !report.UserReportedRuntimeObservation.Contains("22631", StringComparison.Ordinal),
+            "Generic readiness output must not embed a specific machine's history.");
+        using var json = JsonDocument.Parse(report.ToJson());
+        True(json.RootElement.TryGetProperty("Statuses", out var serializedStatuses) &&
+            serializedStatuses.EnumerateArray().All(value =>
+                value.ValueKind == JsonValueKind.String),
+            "Machine-readable readiness statuses use stable enum names, not integers.");
+        True(serializedStatuses.EnumerateArray().Any(value =>
+            value.GetString() == nameof(ReadinessStatus.PRODUCTION_AUTHORIZATION_BLOCKED)),
+            "Serialized status names explicitly preserve the production blocker.");
+        True(json.RootElement.TryGetProperty("ObservedReadOnlyRuntimeCapability", out _),
+            "Runtime observation category is serialized separately.");
         return Task.CompletedTask;
     }
 
@@ -990,6 +1049,302 @@ internal static class LabTests
         return Task.CompletedTask;
     }
 
+    private static Task LyingInventoryCountIsRejected()
+    {
+        var one = FakeId("count-lie-000001");
+        Throws<InvalidDataException>(() => SyntheticInventory.Validate(
+            new LyingInventoryCollection(0, [one])));
+        var moreThanLimit = Enumerable.Range(0, 129)
+            .Select(index => FakeId($"bound-check-{index:D4}"))
+            .ToArray();
+        Throws<InvalidDataException>(() => SyntheticInventory.Validate(
+            new LyingInventoryCollection(128, moreThanLimit)));
+        return Task.CompletedTask;
+    }
+
+    private static async Task UnknownEnrollmentIdRemainsUntrusted()
+    {
+        var native = new FakeNativeWebAuthn { RegistrationOutcomeUnknown = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "One new inventory ID cannot be attributed to the registration attempt.");
+        True(workflow.OrphanCredentialId is null && workflow.Credential is null,
+            "An unbound ID is not trusted or made a cleanup target.");
+        Equal(0, native.DeletionCalls, "Reconciliation never deletes the arbitrary new ID.");
+        await ThrowsAsync<InvalidOperationException>(() => workflow.EnrollAsync(default));
+    }
+
+    private static async Task RegistrationIdCollision()
+    {
+        var native = new FakeNativeWebAuthn();
+        var existingId = FakeId("existing-cred-01");
+        native.SeedFakeCredential(existingId);
+        native.RegistrationCredentialIdOverride = Encoding.ASCII.GetBytes(
+            "existing-cred-01");
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "A returned ID already present in the baseline is ambiguous.");
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "An unchanged colliding ID cannot reconcile the operation.");
+        True(workflow.Credential is null && workflow.OrphanCredentialId is null,
+            "The pre-existing identity never becomes trusted or deletable.");
+        Equal(0, native.DeletionCalls, "Collision handling never deletes the existing fake ID.");
+    }
+
+    private static async Task CleanupRejectsUnexpectedInventoryIdentity()
+    {
+        var native = new FakeNativeWebAuthn { DeleteUnknownWithoutEffect = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        await ThrowsAsync<FakeNativeFailureException>(() =>
+            workflow.RevokeAndCleanFakeAsync(default));
+        native.NextInventorySnapshot = [FakeId("unexpected-id-001")];
+        await ThrowsAsync<InvalidDataException>(() =>
+            workflow.ReconcileUnknownCleanupAsync(default));
+        Equal(LabState.CleanupOutcomeUnknown, workflow.State,
+            "An unexpected valid-looking ID cannot prove target absence.");
+        True(workflow.Credential is null, "Failed reconciliation does not restore trust.");
+        await ThrowsAsync<InvalidOperationException>(() =>
+            workflow.RetryFakeCleanupAsync(default));
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.RevokedCleanupPending, workflow.State,
+            "Only a subsequent recognized snapshot permits an explicit retry.");
+        await workflow.RetryFakeCleanupAsync(default);
+        Equal(LabState.RevokedAndCleaned, workflow.State,
+            "Exact synthetic target cleanup still has a positive control.");
+    }
+
+    private static async Task MalformedOrphanIdCannotBeDeleted()
+    {
+        var native = new FakeNativeWebAuthn
+        {
+            CreateOrphanThenFail = true,
+            RegistrationOrphanIdOverride = "attacker-controlled-id"
+        };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "Malformed recovery identity keeps enrollment outcome unknown.");
+        True(workflow.OrphanCredentialId is null,
+            "Malformed response ID is never retained as trusted cleanup identity.");
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "Inventory delta cannot repair a malformed operation identity.");
+        Equal(0, native.DeletionCalls,
+            "No deletion is issued for malformed or unbound inventory identity.");
+    }
+
+    private static async Task EnrollmentBaselineLossRemainsUnknown()
+    {
+        var existing = FakeId("baseline-id-00001");
+        var native = new FakeNativeWebAuthn
+        {
+            RegistrationOutcomeUnknown = true,
+            UnknownOutcomeCreatesCredential = false
+        };
+        native.SeedFakeCredential(existing);
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+
+        // The inventory has no additions, but one original credential is gone.
+        native.NextInventorySnapshot = Array.Empty<string>();
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "Absence of new IDs cannot prove unchanged inventory when baseline IDs disappeared.");
+        await ThrowsAsync<InvalidOperationException>(() => workflow.EnrollAsync(default));
+
+        // An exact subsequent snapshot is the narrowly permitted positive control.
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.Ready, workflow.State,
+            "A later exact fake baseline match permits synthetic recovery.");
+    }
+
+    private static async Task DisappearingCollisionRemainsUnknown()
+    {
+        var existing = FakeId("baseline-id-00002");
+        var native = new FakeNativeWebAuthn
+        {
+            RegistrationCredentialIdOverride = Encoding.ASCII.GetBytes("baseline-id-00002")
+        };
+        native.SeedFakeCredential(existing);
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        native.NextInventorySnapshot = Array.Empty<string>();
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "A known collision cannot be cleared when its inventory entry disappears.");
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "A later exact baseline snapshot cannot establish collision ownership.");
+        True(workflow.Credential is null && workflow.OrphanCredentialId is null,
+            "Collision recovery must not grant trust or create a deletion target.");
+        Equal(0, native.DeletionCalls, "Collision recovery cannot delete the original ID.");
+    }
+
+    private static async Task MalformedRecoveryIdentityRemainsUnknown()
+    {
+        var native = new FakeNativeWebAuthn
+        {
+            CreateOrphanThenFail = true,
+            RegistrationOrphanIdOverride = "not a valid base64url ID"
+        };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        native.NextInventorySnapshot = Array.Empty<string>();
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "An invalid returned recovery identity cannot be cured by an empty inventory.");
+        True(workflow.OrphanCredentialId is null, "Invalid identity is never stored as orphan.");
+        Equal(0, native.DeletionCalls, "Unknown enrollment cannot trigger deletion.");
+    }
+
+    private static async Task CollisionInjectionPreservesExistingCredential()
+    {
+        var existing = FakeId("baseline-id-00003");
+        var native = new FakeNativeWebAuthn
+        {
+            RegistrationCredentialIdOverride = Encoding.ASCII.GetBytes("baseline-id-00003"),
+            FailRegistration = true
+        };
+        native.SeedFakeCredential(existing);
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        True(native.FakeCredentialIds.Contains(existing),
+            "A failed duplicate fake registration cannot remove a pre-existing credential.");
+        Equal(0, native.DeletionCalls, "Fake collision injection cannot call deletion.");
+    }
+
+    private static async Task UnboundValidOrphanIdCannotBeDeleted()
+    {
+        var unbound = FakeId("unbound-fake-id-01");
+        var native = new FakeNativeWebAuthn
+        {
+            CreateOrphanThenFail = true,
+            RegistrationOrphanIdOverride = unbound
+        };
+        // A separate synthetic identity appears only after the pre-enrollment
+        // inventory snapshot; the claimed recovery ID must not target it.
+        native.AfterRegistrationCreated = () => native.SeedFakeCredential(unbound);
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "A canonical but operation-unbound ID cannot be recovered as a known orphan.");
+        True(workflow.OrphanCredentialId is null,
+            "A fake exception claim does not establish registration identity.");
+        await ThrowsAsync<InvalidOperationException>(() => workflow.RecoverOrphanAsync(default));
+        Equal(0, native.DeletionCalls, "Unbound claimed identity is never deleted.");
+        True(native.FakeCredentialIds.Contains(unbound),
+            "The unrelated synthetic credential must remain intact.");
+    }
+
+    private static Task JournalTransitionMatrix()
+    {
+        var states = Enum.GetValues<LabState>();
+        var operations = Enum.GetValues<RecoveryOperation>();
+        var outcomes = Enum.GetValues<RecoveryOutcome>();
+        foreach (var operation in operations)
+        foreach (var prior in states)
+        foreach (var next in states)
+        {
+            var expected = ReferenceCanBegin(operation, prior, next);
+            var actual = RecoveryJournal.CanBegin(operation, prior, next);
+            if (expected != actual)
+                throw new InvalidOperationException(
+                    $"Shortest failing sequence: Begin({operation}) from {prior} to {next}.");
+        }
+
+        foreach (var operation in operations)
+        foreach (var prior in states)
+        foreach (var priorOutcome in outcomes)
+        foreach (var next in states)
+        foreach (var outcome in outcomes)
+        {
+            var expected = ReferenceCanRecord(
+                operation, prior, priorOutcome, next, outcome);
+            var actual = RecoveryJournal.CanRecord(
+                operation, prior, priorOutcome, next, outcome);
+            if (expected != actual)
+                throw new InvalidOperationException(
+                    $"Shortest failing sequence: Record({operation},{priorOutcome}) " +
+                    $"from {prior} to {next} as {outcome}.");
+        }
+        return Task.CompletedTask;
+    }
+
+    private static bool ReferenceCanBegin(
+        RecoveryOperation operation, LabState prior, LabState next)
+    {
+        if (operation == RecoveryOperation.Enrollment)
+            return prior == LabState.Ready && next == LabState.EnrollmentStarted;
+        if (operation == RecoveryOperation.Assertion)
+            return prior == LabState.CredentialPinnedInMemory && next == LabState.AssertionStarted;
+        if (operation == RecoveryOperation.Cleanup)
+            return ((prior == LabState.CredentialPinnedInMemory ||
+                prior == LabState.AssertionContractMatched) &&
+                next == LabState.RevokedCleanupPending) ||
+                (prior == next && (prior == LabState.RevokedCleanupPending ||
+                    prior == LabState.OrphanedCredential || prior == LabState.CreatedUnpinned));
+        return operation == RecoveryOperation.Reconciliation && prior == next &&
+            (prior == LabState.EnrollmentOutcomeUnknown ||
+             prior == LabState.CleanupOutcomeUnknown ||
+             prior == LabState.OrphanCleanupOutcomeUnknown);
+    }
+
+    private static bool ReferenceCanRecord(
+        RecoveryOperation operation, LabState prior, RecoveryOutcome priorOutcome,
+        LabState next, RecoveryOutcome outcome)
+    {
+        if (priorOutcome != RecoveryOutcome.Started && priorOutcome != RecoveryOutcome.Succeeded)
+            return false;
+        return operation switch
+        {
+            RecoveryOperation.Enrollment =>
+                (next == LabState.CreatedUnpinned &&
+                    (outcome == RecoveryOutcome.Succeeded || outcome == RecoveryOutcome.Failed)) ||
+                (next == LabState.CredentialPinnedInMemory && prior == LabState.CreatedUnpinned &&
+                    outcome == RecoveryOutcome.Succeeded) ||
+                (next == LabState.OrphanedCredential &&
+                    (outcome == RecoveryOutcome.Failed || outcome == RecoveryOutcome.Unknown)) ||
+                (next == LabState.EnrollmentOutcomeUnknown && outcome == RecoveryOutcome.Unknown) ||
+                (next == LabState.Failed && outcome == RecoveryOutcome.Failed),
+            RecoveryOperation.Assertion =>
+                (next == LabState.AssertionContractMatched && outcome == RecoveryOutcome.Succeeded) ||
+                (next == LabState.Cancelled && outcome == RecoveryOutcome.Unknown) ||
+                (next == LabState.Failed && outcome == RecoveryOutcome.Failed),
+            RecoveryOperation.Cleanup =>
+                (next == LabState.RevokedCleanupPending &&
+                    (outcome == RecoveryOutcome.Started || outcome == RecoveryOutcome.Failed)) ||
+                (next == LabState.OrphanedCredential && outcome == RecoveryOutcome.Failed) ||
+                (next == LabState.Ready && outcome == RecoveryOutcome.Succeeded) ||
+                (next == LabState.RevokedAndCleaned && outcome == RecoveryOutcome.Succeeded) ||
+                ((next == LabState.CleanupOutcomeUnknown ||
+                    next == LabState.OrphanCleanupOutcomeUnknown) && outcome == RecoveryOutcome.Unknown),
+            RecoveryOperation.Reconciliation =>
+                ((next == LabState.Ready || next == LabState.OrphanedCredential ||
+                    next == LabState.RevokedCleanupPending || next == LabState.RevokedAndCleaned) &&
+                    outcome == RecoveryOutcome.Succeeded) ||
+                ((next == LabState.EnrollmentOutcomeUnknown ||
+                    next == LabState.CleanupOutcomeUnknown ||
+                    next == LabState.OrphanCleanupOutcomeUnknown) && outcome == RecoveryOutcome.Unknown),
+            _ => false
+        };
+    }
+
+    private static string FakeId(string label) => Convert.ToBase64String(Encoding.ASCII.GetBytes(label))
+        .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private sealed class LyingInventoryCollection(
+        int declaredCount, IReadOnlyList<string> items) : IReadOnlyCollection<string>
+    {
+        public int Count => declaredCount;
+        public IEnumerator<string> GetEnumerator() => items.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private static RecoveryJournalEntry StoreEntry(long revision, string operationId,
         LabState state, RecoveryOutcome outcome) => new(
         RecoveryJournal.CurrentSchemaVersion, revision, operationId, RecoveryOperation.Enrollment,
@@ -1002,12 +1357,12 @@ internal static class LabTests
         static Evidence<bool> Flag(bool value) => new(value, SyntheticEvidenceSource.SyntheticFixture);
         return new(
             new ExecutableIdentityEvidence(Text("fixture-executable-a")),
-            new BinaryIntegrityEvidence(Text("fixture-digest-a")),
+            new BinaryIntegrityEvidence(Text("fixture-executable-a"), Text("fixture-digest-a")),
             new ProcessIdentityEvidence(new Evidence<int>(42, SyntheticEvidenceSource.SyntheticFixture), Text("fixture-user")),
             new WindowsUserEvidence(Text("fixture-user")),
             new AuthenticatorIdentityEvidence(Text("fixture-authenticator")),
             new RelyingPartyEvidence(Text(RecoveryJournal.TestRpId), Text(RecoveryJournal.TestOrigin)),
-            new CredentialPossessionEvidence(Text("fixture-credential")),
+            new CredentialPossessionEvidence(Text("fixture-authenticator"), Text("fixture-credential")),
             new UserVerificationEvidence(Flag(true), Flag(true)),
             new IndependentUserApprovalEvidence(Flag(true)));
     }

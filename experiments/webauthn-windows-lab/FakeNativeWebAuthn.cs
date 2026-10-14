@@ -26,15 +26,19 @@ internal sealed class FakeNativeFailureException : Exception
     public FakeNativeFailureException(
         string message,
         string? orphanCredentialId = null,
-        bool outcomeUnknown = false)
+        bool outcomeUnknown = false,
+        bool syntheticOrphanIdBoundToOperation = false)
         : base(message)
     {
         OrphanCredentialId = orphanCredentialId;
         OutcomeUnknown = outcomeUnknown;
+        SyntheticOrphanIdBoundToOperation = syntheticOrphanIdBoundToOperation;
     }
 
     public string? OrphanCredentialId { get; }
     public bool OutcomeUnknown { get; }
+    // Deterministic fake-adapter provenance; not cryptographic or OS attestation.
+    public bool SyntheticOrphanIdBoundToOperation { get; }
 }
 
 internal sealed class FakeNativeBuffer : IDisposable
@@ -135,6 +139,8 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
     public bool RegistrationOutcomeUnknown { get; set; }
     public bool UnknownOutcomeCreatesCredential { get; set; } = true;
     public bool ReturnMalformedCose { get; set; }
+    public byte[]? RegistrationCredentialIdOverride { get; set; }
+    public string? RegistrationOrphanIdOverride { get; set; }
     public Action? AfterRegistrationCreated { get; set; }
     public bool FailAssertion { get; set; }
     public bool FailDeletion { get; set; }
@@ -147,21 +153,25 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
     public int DeletionCalls { get; private set; }
     public IReadOnlyCollection<string> FakeCredentialIds => _fakePlatformCredentialIds;
 
+    public void SeedFakeCredential(string credentialId) =>
+        _fakePlatformCredentialIds.Add(credentialId);
+
     public Task<FakeRegistrationResult> SimulateRegistrationAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var idBytes = System.Text.Encoding.ASCII.GetBytes(
+        var generatedIdBytes = System.Text.Encoding.ASCII.GetBytes(
             $"fake-credential-{_nextId++:D4}");
+        var idBytes = RegistrationCredentialIdOverride?.ToArray() ?? generatedIdBytes;
         var id = Convert.ToBase64String(idBytes)
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        _fakePlatformCredentialIds.Add(id);
+        var addedByThisRegistration = _fakePlatformCredentialIds.Add(id);
         AfterRegistrationCreated?.Invoke();
 
         if (RegistrationOutcomeUnknown)
         {
             RegistrationOutcomeUnknown = false;
-            if (!UnknownOutcomeCreatesCredential)
+            if (!UnknownOutcomeCreatesCredential && addedByThisRegistration)
                 _fakePlatformCredentialIds.Remove(id);
             throw new FakeNativeFailureException(
                 "Simulated registration with unknown outcome.",
@@ -172,12 +182,16 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
         {
             CreateOrphanThenFail = false;
             throw new FakeNativeFailureException(
-                "Simulated lost registration response.", id);
+                "Simulated lost registration response.", RegistrationOrphanIdOverride ?? id,
+                syntheticOrphanIdBoundToOperation: addedByThisRegistration &&
+                    (RegistrationOrphanIdOverride is null ||
+                     StringComparer.Ordinal.Equals(RegistrationOrphanIdOverride, id)));
         }
         if (FailRegistration)
         {
             FailRegistration = false;
-            _fakePlatformCredentialIds.Remove(id);
+            if (addedByThisRegistration)
+                _fakePlatformCredentialIds.Remove(id);
             throw new FakeNativeFailureException("Simulated registration failure.");
         }
 
@@ -222,6 +236,9 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!SyntheticInventory.IsCanonicalCredentialId(credentialId) ||
+            !_fakePlatformCredentialIds.Contains(credentialId))
+            throw new FakeNativeFailureException("Synthetic deletion target is not recognized.");
         if (FailDeletion)
         {
             FailDeletion = false;

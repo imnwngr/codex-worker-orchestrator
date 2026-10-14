@@ -34,6 +34,7 @@ internal sealed class LabWorkflow
         new(StringComparer.Ordinal);
     private string? _enrollmentOperationId;
     private int _cleanupAttempts;
+    private LabState _cleanupPreState;
 
     public LabWorkflow(
         IFakeNativeWebAuthn native,
@@ -52,6 +53,7 @@ internal sealed class LabWorkflow
     public string? OrphanCredentialId { get; private set; }
     public string? PendingCleanupCredentialId { get; private set; }
     public RecoveryJournal Journal => _journal;
+    public SyntheticCleanupEvidence? LastCleanupEvidence { get; private set; }
 
     public async Task EnrollAsync(CancellationToken cancellationToken)
     {
@@ -227,9 +229,14 @@ internal sealed class LabWorkflow
         if (State is not (LabState.CredentialPinnedInMemory or LabState.AssertionContractMatched) ||
             Credential is null)
             throw new InvalidOperationException("Cleanup requires a fake pinned credential.");
+        _cleanupPreState = State;
         PendingCleanupCredentialId = Credential.CredentialId;
         Credential = null; // Revoke fake trust BEFORE any deletion attempt.
         State = LabState.RevokedCleanupPending;
+        LastCleanupEvidence = new SyntheticCleanupEvidence(
+            RecoveryJournal.TestRpId, PendingCleanupCredentialId, "not_started",
+            _cleanupPreState, true, "not_attempted", "not_reconciled",
+            "cleanup_not_yet_attempted", "SYNTHETIC_CLEANUP_PENDING", false);
         _cleanupAttempts = 0;
         _journal.Record(
             _journal.Begin(RecoveryOperation.Cleanup, State),
@@ -274,6 +281,10 @@ internal sealed class LabWorkflow
                 }
                 _journal.Record(operationId, RecoveryOperation.Reconciliation, State,
                     RecoveryOutcome.Succeeded, errorCode: "fake_inventory_confirms_absence");
+                if (!isOrphan)
+                    UpdateCleanupEvidence("response_unknown_or_lost",
+                        "synthetic_inventory_confirms_absence", "none_within_fake_inventory_scope",
+                        "SYNTHETIC_ID_ABSENT_FROM_TEST_INVENTORY");
                 return;
             }
 
@@ -281,6 +292,10 @@ internal sealed class LabWorkflow
             _journal.Record(operationId, RecoveryOperation.Reconciliation, State,
                 RecoveryOutcome.Succeeded, credentialId: id,
                 errorCode: "fake_inventory_confirms_present_retry_allowed");
+            if (!isOrphan)
+                UpdateCleanupEvidence("response_unknown_or_lost",
+                    "synthetic_inventory_confirms_present", "deletion_not_confirmed",
+                    "SYNTHETIC_CLEANUP_PENDING");
         }
         catch
         {
@@ -288,6 +303,10 @@ internal sealed class LabWorkflow
             _journal.Record(operationId, RecoveryOperation.Reconciliation, State,
                 RecoveryOutcome.Unknown, credentialId: id,
                 errorCode: "fake_inventory_reconciliation_failed");
+            if (!isOrphan)
+                UpdateCleanupEvidence("response_unknown_or_lost",
+                    "inventory_unavailable_or_invalid", "inventory_reconciliation_incomplete",
+                    "SYNTHETIC_CLEANUP_UNKNOWN");
             throw;
         }
     }
@@ -301,6 +320,11 @@ internal sealed class LabWorkflow
         _cleanupAttempts++;
         var operationId = _journal.Begin(RecoveryOperation.Cleanup,
             isOrphan ? State : LabState.RevokedCleanupPending);
+        if (!isOrphan && PendingCleanupCredentialId is not null)
+            LastCleanupEvidence = new SyntheticCleanupEvidence(
+                RecoveryJournal.TestRpId, PendingCleanupCredentialId, operationId,
+                _cleanupPreState, Credential is null, "pending", "not_reconciled",
+                "inventory_not_yet_checked", "SYNTHETIC_CLEANUP_PENDING", false);
         try
         {
             await _native.SimulatePlatformCredentialDeletionAsync(
@@ -324,6 +348,14 @@ internal sealed class LabWorkflow
                 RecoveryOutcome.Succeeded, credentialId: credentialId,
                 cleanupAttempts: _cleanupAttempts,
                 errorCode: "fake_inventory_confirms_absence");
+            if (!isOrphan && LastCleanupEvidence is not null)
+                LastCleanupEvidence = LastCleanupEvidence with
+                {
+                    CleanupResponseCategory = "synthetic_delete_reported_success",
+                    InventoryReconciliationResult = "synthetic_inventory_confirms_absence",
+                    AmbiguityOrMissingEvidence = "none_within_fake_inventory_scope",
+                    FinalOutcome = "SYNTHETIC_ID_ABSENT_FROM_TEST_INVENTORY"
+                };
         }
         catch (FakeNativeFailureException error) when (error.OutcomeUnknown)
         {
@@ -331,6 +363,8 @@ internal sealed class LabWorkflow
             _journal.Record(operationId, RecoveryOperation.Cleanup, State,
                 RecoveryOutcome.Unknown, credentialId: credentialId,
                 cleanupAttempts: _cleanupAttempts, errorCode: "cleanup_response_lost");
+            UpdateCleanupEvidence("response_lost_or_unknown", "not_reconciled",
+                "deletion_outcome_unknown", "SYNTHETIC_CLEANUP_UNKNOWN");
             throw;
         }
         catch (FakeNativeFailureException error) when (!error.OutcomeUnknown)
@@ -340,6 +374,8 @@ internal sealed class LabWorkflow
             _journal.Record(operationId, RecoveryOperation.Cleanup, State,
                 RecoveryOutcome.Failed, credentialId: credentialId,
                 cleanupAttempts: _cleanupAttempts, errorCode: "cleanup_confirmed_failure");
+            UpdateCleanupEvidence("synthetic_delete_reported_failure", "not_reconciled",
+                "retry_requires_reconciliation_policy", "SYNTHETIC_CLEANUP_PENDING");
             throw;
         }
         catch (OperationCanceledException)
@@ -350,6 +386,8 @@ internal sealed class LabWorkflow
                 RecoveryOutcome.Unknown, credentialId: credentialId,
                 cancellationRequested: true, cleanupAttempts: _cleanupAttempts,
                 errorCode: "cleanup_cancelled_outcome_unknown");
+            UpdateCleanupEvidence("cancelled_response_unknown", "not_reconciled",
+                "cancellation_does_not_prove_deletion_failure", "SYNTHETIC_CLEANUP_UNKNOWN");
             throw;
         }
         catch
@@ -359,8 +397,23 @@ internal sealed class LabWorkflow
             _journal.Record(operationId, RecoveryOperation.Cleanup, State,
                 RecoveryOutcome.Unknown, credentialId: credentialId,
                 cleanupAttempts: _cleanupAttempts, errorCode: "cleanup_unconfirmed");
+            UpdateCleanupEvidence("response_unconfirmed", "inventory_unavailable_or_invalid",
+                "cleanup_outcome_unknown", "SYNTHETIC_CLEANUP_UNKNOWN");
             throw;
         }
+    }
+
+    private void UpdateCleanupEvidence(string response, string inventory,
+        string ambiguity, string outcome)
+    {
+        if (LastCleanupEvidence is null) return;
+        LastCleanupEvidence = LastCleanupEvidence with
+        {
+            CleanupResponseCategory = response,
+            InventoryReconciliationResult = inventory,
+            AmbiguityOrMissingEvidence = ambiguity,
+            FinalOutcome = outcome
+        };
     }
 
     private static string ToBase64Url(byte[] bytes) =>

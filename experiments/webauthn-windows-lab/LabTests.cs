@@ -41,7 +41,20 @@ internal static class LabTests
         ("malformed inventory blocks cleanup confirmation", MalformedCleanupInventory),
         ("duplicate inventory blocks cleanup confirmation", DuplicateCleanupInventory),
         ("oversized inventory is rejected by synthetic validator", OversizedInventory),
-        ("recovery journal rejects forged operations and invalid outcomes", JournalRejectsInvalidTransitions)
+        ("recovery journal rejects forged operations and invalid outcomes", JournalRejectsInvalidTransitions),
+        ("synthetic trust dimensions cannot be substituted by caller metadata", TrustBoundaryRejectsMetadata),
+        ("complete consistent fixture evidence is synthetic-only", TrustBoundaryPositiveControl),
+        ("conflicting trust evidence and RP origin pairs fail closed", TrustBoundaryContradictions),
+        ("readiness evaluator blocks all real and production operations", ReadinessIsInformational),
+        ("synthetic store commits atomically and restores interrupted initiation", StoreAtomicRecovery),
+        ("synthetic store rejects stale rollback duplicate IDs and partial writes", StoreRejectsCorruption),
+        ("replay continuity is explicitly lost when the ledger is replaced", StoreReplayContinuity),
+        ("reconstructed recovery journal preserves revision and unknown state", JournalReconstructionUsesSharedStore),
+        ("concurrent cleanup reconciliation cannot restore trust", ConcurrentCleanupReconciliation),
+        ("store continuation cannot bypass validated transitions", StoreContinuationIsValidated),
+        ("unanchored synthetic restore cannot fabricate credential state", StoreRestoreRequiresValidGenesis),
+        ("replaced replay ledger blocks further consumption", StoreReplacedLedgerBlocksConsumption),
+        ("synthetic trust handles missing nested evidence and empty labels", TrustMissingNestedEvidence)
     ];
 
     public static int Count => Tests.Count;
@@ -340,6 +353,13 @@ internal static class LabTests
         await workflow.RevokeAndCleanFakeAsync(default);
         Equal(LabState.RevokedAndCleaned, workflow.State,
             "Fake credential can be cleaned after successful contract matching.");
+        Equal(RecoveryJournal.TestRpId, workflow.LastCleanupEvidence!.RpId,
+            "Cleanup evidence fixes the synthetic RP ID.");
+        Equal("SYNTHETIC_ID_ABSENT_FROM_TEST_INVENTORY",
+            workflow.LastCleanupEvidence.FinalOutcome,
+            "Cleanup evidence reports only absence from fake inventory.");
+        True(!workflow.LastCleanupEvidence.ClaimsEveryAuthenticatorStoreCleaned,
+            "One synthetic inventory cannot prove cleanup of all authenticators or synced stores.");
         Equal(0, native.FakeCredentialIds.Count,
             "Fake authenticator contains no credential after cleanup.");
     }
@@ -425,11 +445,16 @@ internal static class LabTests
             workflow.RevokeAndCleanFakeAsync(default));
         Equal(LabState.CleanupOutcomeUnknown, workflow.State,
             "Lost delete response remains unknown.");
+        Equal("SYNTHETIC_CLEANUP_UNKNOWN", workflow.LastCleanupEvidence!.FinalOutcome,
+            "Lost response is recorded as unknown.");
         True(workflow.Credential is null, "Revocation is never undone.");
         Equal(id, workflow.PendingCleanupCredentialId, "ID retained for reconciliation.");
         await workflow.ReconcileUnknownCleanupAsync(default);
         Equal(LabState.RevokedAndCleaned, workflow.State,
             "Absence from fake inventory confirms fake cleanup.");
+        Equal("SYNTHETIC_ID_ABSENT_FROM_TEST_INVENTORY",
+            workflow.LastCleanupEvidence!.FinalOutcome,
+            "Reconciliation records synthetic inventory evidence only.");
         Equal(1, native.DeletionCalls, "Reconciliation does not repeat deletion.");
         await ThrowsAsync<InvalidOperationException>(() =>
             workflow.RetryFakeCleanupAsync(default));
@@ -703,6 +728,288 @@ internal static class LabTests
         journal.Record(reconciliationId, RecoveryOperation.Reconciliation,
             LabState.Ready, RecoveryOutcome.Succeeded);
         return Task.CompletedTask;
+    }
+
+    private static Task TrustBoundaryRejectsMetadata()
+    {
+        var evidence = CompleteTrustEvidence();
+        var forged = evidence with
+        {
+            Process = evidence.Process with
+            {
+                ProcessFixture = new Evidence<int>(1234, SyntheticEvidenceSource.CallerSuppliedMetadata),
+                UserFixture = new Evidence<string>("same-user", SyntheticEvidenceSource.CallerSuppliedMetadata)
+            },
+            WindowsUser = new WindowsUserEvidence(
+                new Evidence<string>("same-user", SyntheticEvidenceSource.CallerSuppliedMetadata))
+        };
+        Equal(TrustAssessment.UNVERIFIED, SyntheticTrustEvaluator.Evaluate(forged).Status,
+            "Plausible same-user process fields are not verified identity.");
+        Equal(TrustAssessment.INSUFFICIENT_EVIDENCE, SyntheticTrustEvaluator.Evaluate(null).Status,
+            "Missing evidence cannot satisfy trust.");
+        return Task.CompletedTask;
+    }
+
+    private static Task TrustBoundaryPositiveControl()
+    {
+        Equal(TrustAssessment.SATISFIED_FOR_SYNTHETIC_TEST,
+            SyntheticTrustEvaluator.Evaluate(CompleteTrustEvidence()).Status,
+            "A complete consistent fixture is accepted only for synthetic testing.");
+        return Task.CompletedTask;
+    }
+
+    private static Task TrustBoundaryContradictions()
+    {
+        var evidence = CompleteTrustEvidence();
+        var conflict = evidence with
+        {
+            WindowsUser = new WindowsUserEvidence(
+                new Evidence<string>("different-fixture-user", SyntheticEvidenceSource.SyntheticFixture))
+        };
+        Equal(TrustAssessment.CONTRADICTORY_EVIDENCE,
+            SyntheticTrustEvaluator.Evaluate(conflict).Status, "Conflicting identities are rejected.");
+        var rp = evidence with
+        {
+            RelyingParty = new RelyingPartyEvidence(
+                new Evidence<string>("attacker.example", SyntheticEvidenceSource.SyntheticFixture),
+                new Evidence<string>(RecoveryJournal.TestOrigin, SyntheticEvidenceSource.SyntheticFixture))
+        };
+        Equal(TrustAssessment.BLOCKED, SyntheticTrustEvaluator.Evaluate(rp).Status,
+            "Caller substituted RP configuration is blocked.");
+        return Task.CompletedTask;
+    }
+
+    private static Task ReadinessIsInformational()
+    {
+        var report = ExperimentalReadinessEvaluator.Evaluate();
+        foreach (var status in Enum.GetValues<ReadinessStatus>())
+            True(report.Statuses.Contains(status), $"Readiness must report {status}.");
+        True(report.ApplicationIdentity.Contains("untrusted", StringComparison.OrdinalIgnoreCase),
+            "Runtime identity remains untrusted.");
+        True(report.UserApproval.Contains("Separate explicit USER approval", StringComparison.Ordinal),
+            "Each real operation requires separate explicit approval.");
+        True(report.ReplayProtection.Contains("not durable", StringComparison.OrdinalIgnoreCase),
+            "No production-grade durable replay protection is claimed.");
+        return Task.CompletedTask;
+    }
+
+    private static Task StoreAtomicRecovery()
+    {
+        var store = new SyntheticJournalStore();
+        var started = StoreEntry(1, "synthetic-op-000001", LabState.EnrollmentStarted,
+            RecoveryOutcome.Started);
+        Equal(SyntheticStoreResult.Unknown,
+            store.Commit(0, started, SyntheticWriteFault.CrashAfterInitiation),
+            "Crash after initiation is unknown to caller.");
+        Equal(1L, store.Revision, "Initiated operation is atomically journaled.");
+        var reconstructed = new SyntheticJournalStore();
+        Equal(SyntheticStoreResult.Committed, reconstructed.Restore(store.Current),
+            "Synthetic workflow reconstruction can receive the stored snapshot.");
+        Equal(RecoveryOutcome.Started, reconstructed.Current!.Outcome,
+            "Interrupted operation is not inferred successful.");
+        return Task.CompletedTask;
+    }
+
+    private static Task StoreRejectsCorruption()
+    {
+        var store = new SyntheticJournalStore();
+        var entry = StoreEntry(1, "synthetic-op-000001", LabState.EnrollmentStarted,
+            RecoveryOutcome.Started);
+        Equal(SyntheticStoreResult.Unknown,
+            store.Commit(0, entry, SyntheticWriteFault.TornWrite), "Torn commit is not published.");
+        Equal(0L, store.Revision, "Atomic store leaves no partial revision.");
+        Equal(SyntheticStoreResult.Committed, store.Commit(0, entry), "Valid commit succeeds.");
+        Equal(SyntheticStoreResult.InvalidRecord, store.Commit(1,
+            StoreEntry(2, "synthetic-op-000002", LabState.RevokedAndCleaned,
+                RecoveryOutcome.Succeeded)), "Invalid state transition is rejected.");
+        Equal(SyntheticStoreResult.StaleRevision, store.Commit(0,
+            StoreEntry(3, "synthetic-op-000003", LabState.Failed, RecoveryOutcome.Failed)),
+            "Stale expected revision is rejected.");
+        Equal(SyntheticStoreResult.InvalidRecord, store.Commit(1,
+            StoreEntry(2, "synthetic-op-000001", LabState.Failed, RecoveryOutcome.Failed)),
+            "Duplicate operation identifier is rejected.");
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Restore(entry with { Revision = 0 }), "Rollback snapshot is rejected.");
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Restore(entry with { State = LabState.CredentialPinnedInMemory }),
+            "Conflicting same-revision copy is rejected.");
+        Equal(SyntheticStoreResult.Unknown,
+            store.Commit(1, StoreEntry(2, "synthetic-op-000002", LabState.Failed,
+                RecoveryOutcome.Failed), SyntheticWriteFault.CrashBeforeInitiation),
+            "A crash before initiation records no new state.");
+        Equal(SyntheticStoreResult.Unknown,
+            store.Commit(1, StoreEntry(2, "synthetic-op-000002", LabState.Failed,
+                RecoveryOutcome.Failed), SyntheticWriteFault.ResultReturnedBeforeJournalUpdate),
+            "A returned result without journal update remains unknown.");
+        Equal(1L, store.Revision, "Neither pre-initiation fault advances the stored revision.");
+        return Task.CompletedTask;
+    }
+
+    private static Task StoreReplayContinuity()
+    {
+        var store = new SyntheticJournalStore();
+        var firstJournal = new RecoveryJournal(store);
+        True(firstJournal.TryConsume("challenge-a", "nonce-a"), "First replay consumption succeeds.");
+        var reconstructedJournal = new RecoveryJournal(store);
+        Equal(1, reconstructedJournal.ConsumedNonceCount,
+            "Reconstructed journal sees the shared synthetic replay ledger.");
+        True(!reconstructedJournal.TryConsume("challenge-a", "nonce-a"),
+            "Replay is rejected across synthetic journal reconstruction.");
+        store.MarkReplayLedgerReplaced();
+        True(!store.ReplayContinuityEstablished,
+            "Replacement/loss is explicit and cannot be called durable replay protection.");
+        var replacement = new SyntheticJournalStore();
+        True(replacement.TryConsume("challenge-a", "nonce-a"),
+            "Fresh synthetic ledger demonstrates loss of prior replay state.");
+        return Task.CompletedTask;
+    }
+
+    private static Task JournalReconstructionUsesSharedStore()
+    {
+        var store = new SyntheticJournalStore();
+        var first = new RecoveryJournal(store);
+        var operationId = first.Begin(RecoveryOperation.Enrollment, LabState.EnrollmentStarted);
+        first.Record(operationId, RecoveryOperation.Enrollment,
+            LabState.EnrollmentOutcomeUnknown, RecoveryOutcome.Unknown,
+            errorCode: "simulated_interruption");
+        var restored = new RecoveryJournal(store);
+        Equal(LabState.EnrollmentOutcomeUnknown, restored.Current.State,
+            "A reconstructed journal preserves unknown operation state.");
+        Equal(first.Current.Revision, restored.Current.Revision,
+            "A reconstructed journal keeps the monotonic revision.");
+        var next = restored.Begin(RecoveryOperation.Reconciliation,
+            LabState.EnrollmentOutcomeUnknown);
+        True(next != operationId, "Reconstruction allocates a fresh operation ID.");
+        return Task.CompletedTask;
+    }
+
+    private static async Task ConcurrentCleanupReconciliation()
+    {
+        var native = new FakeNativeWebAuthn { DeleteThenLoseResponse = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.RevokeAndCleanFakeAsync(default));
+        var attempts = new[] { Reconcile(), Reconcile() };
+        var results = await Task.WhenAll(attempts);
+        Equal(1, results.Count(result => result),
+            "Exactly one reconciliation may complete from the captured unknown state.");
+        Equal(LabState.RevokedAndCleaned, workflow.State,
+            "Successful reconciliation preserves revoked trust.");
+        True(workflow.Credential is null, "Reconciliation never restores the credential trust.");
+
+        async Task<bool> Reconcile()
+        {
+            try { await workflow.ReconcileUnknownCleanupAsync(default); return true; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+
+    private static Task StoreContinuationIsValidated()
+    {
+        var store = new SyntheticJournalStore();
+        var started = StoreEntry(1, "synthetic-op-000001", LabState.EnrollmentStarted,
+            RecoveryOutcome.Started);
+        Equal(SyntheticStoreResult.Committed, store.Commit(0, started),
+            "Valid enrollment starts in the store.");
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Commit(1, StoreEntry(2, started.OperationId, LabState.RevokedAndCleaned,
+                RecoveryOutcome.Succeeded), continuationOfCurrentOperation: true),
+            "A continuation cannot forge an impossible transition.");
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Commit(1, StoreEntry(2, started.OperationId, LabState.Failed,
+                RecoveryOutcome.Succeeded), continuationOfCurrentOperation: true),
+            "A failed state cannot be labeled successful.");
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Commit(1, StoreEntry(2, started.OperationId, LabState.CreatedUnpinned,
+                RecoveryOutcome.Succeeded) with { Operation = RecoveryOperation.Cleanup },
+                continuationOfCurrentOperation: true),
+            "A continuation cannot change operation kind.");
+        Equal(SyntheticStoreResult.Committed,
+            store.Commit(1, StoreEntry(2, started.OperationId, LabState.CreatedUnpinned,
+                RecoveryOutcome.Succeeded), continuationOfCurrentOperation: true),
+            "Valid continuation still succeeds.");
+        Equal(2L, store.Revision, "Rejected transitions do not advance state.");
+        return Task.CompletedTask;
+    }
+
+    private static Task StoreRestoreRequiresValidGenesis()
+    {
+        var store = new SyntheticJournalStore();
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Commit(0, StoreEntry(1, "synthetic-op-000002", LabState.EnrollmentStarted,
+                RecoveryOutcome.Started)),
+            "A new store must begin with the first synthetic operation ID.");
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Restore(StoreEntry(4, "synthetic-op-000004", LabState.RevokedAndCleaned,
+                RecoveryOutcome.Succeeded)),
+            "A fabricated terminal state cannot bootstrap an empty store.");
+        Equal(SyntheticStoreResult.InvalidRecord,
+            store.Restore(StoreEntry(1, "synthetic-op-000999", LabState.EnrollmentStarted,
+                RecoveryOutcome.Started)),
+            "A forged initial sequence cannot bootstrap an empty store.");
+        Equal(0L, store.Revision, "Invalid restore cannot mutate the synthetic store.");
+        Equal(SyntheticStoreResult.Committed,
+            store.Restore(StoreEntry(1, "synthetic-op-000001", LabState.EnrollmentStarted,
+                RecoveryOutcome.Started)),
+            "An initial in-flight record can be restored for the fake-only test.");
+        return Task.CompletedTask;
+    }
+
+    private static Task StoreReplacedLedgerBlocksConsumption()
+    {
+        var store = new SyntheticJournalStore();
+        True(store.TryConsume("challenge-1", "nonce-1"), "Before loss, consume works.");
+        store.MarkReplayLedgerReplaced();
+        True(!store.TryConsume("challenge-2", "nonce-2"),
+            "A store with lost replay continuity cannot mint a clean replay history.");
+        True(!new RecoveryJournal(store).TryConsume("challenge-3", "nonce-3"),
+            "Restoring a journal cannot bypass lost replay continuity.");
+        return Task.CompletedTask;
+    }
+
+    private static Task TrustMissingNestedEvidence()
+    {
+        var complete = CompleteTrustEvidence();
+        Equal(TrustAssessment.INSUFFICIENT_EVIDENCE,
+            SyntheticTrustEvaluator.Evaluate(complete with { Executable = null! }).Status,
+            "A missing nested dimension must fail closed rather than throwing.");
+        Equal(TrustAssessment.INSUFFICIENT_EVIDENCE,
+            SyntheticTrustEvaluator.Evaluate(complete with
+            {
+                Executable = new ExecutableIdentityEvidence(
+                    new Evidence<string>(" ", SyntheticEvidenceSource.SyntheticFixture))
+            }).Status, "Whitespace-only synthetic identities are incomplete.");
+        Equal(TrustAssessment.BLOCKED,
+            SyntheticTrustEvaluator.Evaluate(complete with
+            {
+                Process = complete.Process with
+                {
+                    ProcessFixture = new Evidence<int>(0, SyntheticEvidenceSource.SyntheticFixture)
+                }
+            }).Status, "A zero synthetic process identity is blocked.");
+        return Task.CompletedTask;
+    }
+
+    private static RecoveryJournalEntry StoreEntry(long revision, string operationId,
+        LabState state, RecoveryOutcome outcome) => new(
+        RecoveryJournal.CurrentSchemaVersion, revision, operationId, RecoveryOperation.Enrollment,
+        state, outcome, RecoveryJournal.TestRpId, RecoveryJournal.TestOrigin,
+        null, null, null, false, 0, null);
+
+    private static SyntheticTrustEvidence CompleteTrustEvidence()
+    {
+        static Evidence<string> Text(string value) => new(value, SyntheticEvidenceSource.SyntheticFixture);
+        static Evidence<bool> Flag(bool value) => new(value, SyntheticEvidenceSource.SyntheticFixture);
+        return new(
+            new ExecutableIdentityEvidence(Text("fixture-executable-a")),
+            new BinaryIntegrityEvidence(Text("fixture-digest-a")),
+            new ProcessIdentityEvidence(new Evidence<int>(42, SyntheticEvidenceSource.SyntheticFixture), Text("fixture-user")),
+            new WindowsUserEvidence(Text("fixture-user")),
+            new AuthenticatorIdentityEvidence(Text("fixture-authenticator")),
+            new RelyingPartyEvidence(Text(RecoveryJournal.TestRpId), Text(RecoveryJournal.TestOrigin)),
+            new CredentialPossessionEvidence(Text("fixture-credential")),
+            new UserVerificationEvidence(Flag(true), Flag(true)),
+            new IndependentUserApprovalEvidence(Flag(true)));
     }
 
     private static byte[] DecodeBase64Url(string value)

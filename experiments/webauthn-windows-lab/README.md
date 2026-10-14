@@ -159,3 +159,5 @@ orphans. A deletion response loss, cancellation after deletion, or inability to
 check fake inventory blocks further cleanup attempts until reconciliation.
 The fake inventory is not a reliable real authenticator inventory, and an
 in-memory journal cannot survive an actual process restart.
+
+Phase 3C.4H adds a typed synthetic trust model, an atomic in-memory storage contract simulation, cleanup evidence, and an informational readiness report. See [BATCH_3C_4H_READINESS.md](BATCH_3C_4H_READINESS.md). These remain synthetic and do not change the NO-GO decision for real credential operations.

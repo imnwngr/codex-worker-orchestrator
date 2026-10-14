@@ -35,8 +35,9 @@ internal sealed record RecoveryJournalEntry(
     string? ErrorCode);
 
 /// <summary>
-/// Synthetic, process-local journal. It deliberately has no file or registry
-/// persistence and must never be used as an authorization trust store.
+/// Synthetic journal backed by an explicitly in-memory storage simulation. A
+/// shared store supports synthetic reconstruction only; it is not actual
+/// durable storage or an authorization trust store.
 /// </summary>
 internal sealed class RecoveryJournal
 {
@@ -44,20 +45,36 @@ internal sealed class RecoveryJournal
     public const string TestRpId = "lab.example.test";
     public const string TestOrigin = "https://approval.lab.example.test";
 
-    private readonly HashSet<string> _consumedChallenges =
-        new(StringComparer.Ordinal);
-    private readonly HashSet<string> _consumedNonces =
-        new(StringComparer.Ordinal);
+    private readonly SyntheticJournalStore _store;
     private long _operationSequence;
     private long _revision;
 
-    public RecoveryJournalEntry Current { get; private set; } = new(
-        CurrentSchemaVersion, 0, "synthetic-op-000000", RecoveryOperation.None,
-        LabState.Ready, RecoveryOutcome.NotStarted, TestRpId, TestOrigin,
-        null, null, null, false, 0, null);
+    public RecoveryJournal(SyntheticJournalStore? store = null)
+    {
+        _store = store ?? new SyntheticJournalStore();
+        Current = new RecoveryJournalEntry(
+            CurrentSchemaVersion, 0, "synthetic-op-000000", RecoveryOperation.None,
+            LabState.Ready, RecoveryOutcome.NotStarted, TestRpId, TestOrigin,
+            null, null, null, false, 0, null);
+        if (_store.Current is { } restored)
+        {
+            if (_store.Restore(restored) != SyntheticStoreResult.Committed ||
+                restored.SchemaVersion != CurrentSchemaVersion ||
+                restored.RpId != TestRpId || restored.Origin != TestOrigin)
+                throw new InvalidDataException("fake_journal_restore_invalid");
+            Current = restored;
+            _revision = restored.Revision;
+            var suffix = restored.OperationId.StartsWith("synthetic-op-", StringComparison.Ordinal)
+                ? restored.OperationId["synthetic-op-".Length..] : string.Empty;
+            if (long.TryParse(suffix, out var sequence)) _operationSequence = sequence;
+        }
+    }
 
-    public int ConsumedChallengeCount => _consumedChallenges.Count;
-    public int ConsumedNonceCount => _consumedNonces.Count;
+    public RecoveryJournalEntry Current { get; private set; }
+    public SyntheticJournalStore Store => _store;
+
+    public int ConsumedChallengeCount => _store.ConsumedChallengeCount;
+    public int ConsumedNonceCount => _store.ConsumedNonceCount;
 
     public string Begin(RecoveryOperation operation, LabState state)
     {
@@ -89,10 +106,11 @@ internal sealed class RecoveryJournal
             !CanRecord(operation, Current.State, Current.Outcome, state, outcome))
             throw new InvalidOperationException("fake_journal_invalid_record_transition");
         Update(operationId, operation, state, outcome, credentialId, algorithm,
-            publicKeySha256, cancellationRequested, cleanupAttempts, errorCode);
+            publicKeySha256, cancellationRequested, cleanupAttempts, errorCode,
+            continuationOfCurrentOperation: true);
     }
 
-    private static bool CanBegin(RecoveryOperation operation, LabState previous, LabState next) =>
+    internal static bool CanBegin(RecoveryOperation operation, LabState previous, LabState next) =>
         operation switch
         {
             RecoveryOperation.Enrollment => previous == LabState.Ready &&
@@ -110,7 +128,7 @@ internal sealed class RecoveryJournal
             _ => false
         };
 
-    private static bool CanRecord(
+    internal static bool CanRecord(
         RecoveryOperation operation, LabState previous, RecoveryOutcome previousOutcome,
         LabState next, RecoveryOutcome outcome)
     {
@@ -151,18 +169,7 @@ internal sealed class RecoveryJournal
 
     public bool TryConsume(string challengeId, string nonce)
     {
-        if (string.IsNullOrWhiteSpace(challengeId) ||
-            string.IsNullOrWhiteSpace(nonce))
-            return false;
-        lock (_consumedNonces)
-        {
-            if (_consumedChallenges.Contains(challengeId) ||
-                _consumedNonces.Contains(nonce))
-                return false;
-            _consumedChallenges.Add(challengeId);
-            _consumedNonces.Add(nonce);
-            return true;
-        }
+        return _store.TryConsume(challengeId, nonce);
     }
 
     private void Update(
@@ -175,11 +182,12 @@ internal sealed class RecoveryJournal
         string? publicKeySha256 = null,
         bool cancellationRequested = false,
         int? cleanupAttempts = null,
-        string? errorCode = null)
+        string? errorCode = null,
+        bool continuationOfCurrentOperation = false)
     {
-        Current = new RecoveryJournalEntry(
+        var entry = new RecoveryJournalEntry(
             CurrentSchemaVersion,
-            ++_revision,
+            _revision + 1,
             operationId,
             operation,
             state,
@@ -192,5 +200,11 @@ internal sealed class RecoveryJournal
             cancellationRequested,
             cleanupAttempts ?? Current.CleanupAttempts,
             errorCode);
+        var result = _store.Commit(_revision, entry,
+            continuationOfCurrentOperation: continuationOfCurrentOperation);
+        if (result != SyntheticStoreResult.Committed)
+            throw new InvalidDataException("fake_journal_commit_failed_closed");
+        Current = entry;
+        _revision = entry.Revision;
     }
 }

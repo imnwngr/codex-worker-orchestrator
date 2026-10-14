@@ -45,7 +45,9 @@ public sealed record WebAuthnReadOnlyCapabilityReport(
     string CheckedExports,
     string FeatureGateEvidence,
     string RealCredentialOperation,
-    string? DiagnosticErrorCategory)
+    string? DiagnosticErrorCategory,
+    string DiagnosticConsistency,
+    string PlatformOperationReadiness)
 {
     private const uint BasicApiVersion = 1;
     private const uint PlatformInventoryAndDeletionApiVersion = 4;
@@ -60,6 +62,7 @@ public sealed record WebAuthnReadOnlyCapabilityReport(
         ArgumentException.ThrowIfNullOrWhiteSpace(windowsBuild);
         ArgumentException.ThrowIfNullOrWhiteSpace(processArchitecture);
 
+        var consistent = IsConsistent(result);
         return new WebAuthnReadOnlyCapabilityReport(
             "READ-ONLY CAPABILITY REPORT — NO CREDENTIAL OPERATION",
             timestampUtc.ToUniversalTime(),
@@ -68,17 +71,20 @@ public sealed record WebAuthnReadOnlyCapabilityReport(
             result.LibraryAvailability.ToString(),
             result.ApiAvailability.ToString(),
             result.ApiVersion,
-            result.ApiVersion is null ? "UNKNOWN" : result.VersionSupport.ToString(),
+            !consistent ? "INCONSISTENT" :
+                result.ApiVersion is null ? "UNKNOWN" : result.VersionSupport.ToString(),
             result.PlatformAuthenticatorAvailability.ToString(),
-            VersionGate(result, BasicApiVersion),
-            VersionGate(result, PlatformInventoryAndDeletionApiVersion),
-            VersionGate(result, PlatformInventoryAndDeletionApiVersion),
+            VersionGate(result, BasicApiVersion, consistent),
+            VersionGate(result, PlatformInventoryAndDeletionApiVersion, consistent),
+            VersionGate(result, PlatformInventoryAndDeletionApiVersion, consistent),
             "WebAuthNGetApiVersionNumber; " +
             "WebAuthNIsUserVerifyingPlatformAuthenticatorAvailable",
             "Version gates are based on the reviewed Windows SDK header map. " +
             "Other feature exports and runtime behavior remain unverified (not probed).",
             "NOT PERFORMED",
-            ErrorCategory(result.Error));
+            ErrorCategory(result.Error),
+            consistent ? "CONSISTENT_WITH_READ_ONLY_CONTRACT" : "INCONSISTENT_BLOCKED",
+            "NOT_ESTABLISHED_NO_CREDENTIAL_OPERATIONS");
     }
 
     public string ToJson() =>
@@ -87,8 +93,34 @@ public sealed record WebAuthnReadOnlyCapabilityReport(
             WriteIndented = true
         });
 
-    private static string VersionGate(WebAuthnCapabilityResult result, uint minimum)
+    private static bool IsConsistent(WebAuthnCapabilityResult result)
     {
+        if (result.LibraryAvailability != CapabilityAvailability.Available ||
+            result.ApiAvailability != CapabilityAvailability.Available)
+        {
+            return result.ApiVersion is null &&
+                result.VersionSupport == ApiVersionSupport.Unknown &&
+                result.PlatformAuthenticatorAvailability == CapabilityAvailability.Unknown &&
+                result.ApiAvailability != CapabilityAvailability.Available;
+        }
+
+        if (result.ApiVersion is null)
+            return result.VersionSupport == ApiVersionSupport.Unknown &&
+                result.PlatformAuthenticatorAvailability == CapabilityAvailability.Unknown;
+        if (result.ApiVersion.Value == 0)
+            return result.VersionSupport == ApiVersionSupport.Unsupported &&
+                result.PlatformAuthenticatorAvailability == CapabilityAvailability.Unknown;
+        if (result.VersionSupport != ApiVersionSupport.Supported)
+            return false;
+        // An error from a native query cannot simultaneously establish authenticator availability.
+        return result.Error is null ||
+            result.PlatformAuthenticatorAvailability == CapabilityAvailability.Unknown;
+    }
+
+    private static string VersionGate(
+        WebAuthnCapabilityResult result, uint minimum, bool consistent)
+    {
+        if (!consistent) return "BLOCKED_INCONSISTENT_DIAGNOSTIC";
         if (result.LibraryAvailability == CapabilityAvailability.Unavailable ||
             result.ApiAvailability == CapabilityAvailability.Unavailable)
             return "BLOCKED_API_UNAVAILABLE";

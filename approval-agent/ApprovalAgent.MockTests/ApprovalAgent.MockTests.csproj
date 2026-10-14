@@ -17,5 +17,8 @@
              Link="Services\MockProposalSource.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Services\WebAuthnCapabilityDiagnostics.cs"
              Link="Services\WebAuthnCapabilityDiagnostics.cs" />
+    <None Include="..\ApprovalAgent.Mock\MainWindow.xaml"
+          Link="Fixtures\MainWindow.xaml"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using ApprovalAgent.Mock.Models;
 using ApprovalAgent.Mock.Services;
 using ApprovalAgent.Mock.ViewModels;
@@ -28,7 +29,10 @@ var tests = new (string Name, Action Run)[]
     ("reports capability environment and operation status as structured JSON", StructuredCapabilityReport),
     ("redacts diagnostic error details from structured reports", StructuredReportRedaction),
     ("blocks all feature gates when the DLL or required exports are unavailable", ReportUnavailableGates),
-    ("reports unexpected diagnostic failures safely", ViewModelReportFailure)
+    ("reports unexpected diagnostic failures safely", ViewModelReportFailure),
+    ("inconsistent native diagnostic combinations fail closed", InconsistentNativeReport),
+    ("unknown and unsupported runtime states remain blocked", UnknownDiagnosticVersionGates),
+    ("WPF structured report uses non-writing binding", ReadOnlyWpfBindingContract)
 };
 
 var failures = 0;
@@ -291,7 +295,7 @@ static void FeatureVersionGates()
     Equal("VERSION_GATE_MET_EXPORTS_AND_BEHAVIOR_UNVERIFIED",
         at.PlatformDeletionVersionGate, "API v4 does not prove deletion behavior.");
 
-    var zero = api3 with { ApiVersion = 0, VersionSupport = ApiVersionSupport.Unsupported };
+    var zero = api3 with { ApiVersion = 0, VersionSupport = ApiVersionSupport.Unsupported, PlatformAuthenticatorAvailability = CapabilityAvailability.Unknown };
     var unsupported = WebAuthnReadOnlyCapabilityReport.Create(
         zero, DateTimeOffset.UnixEpoch, "22631", "X64");
     Equal("UNSUPPORTED_BY_REPORTED_VERSION", unsupported.BasicMakeGetVersionGate,
@@ -300,7 +304,7 @@ static void FeatureVersionGates()
     var inconsistent = api4 with { VersionSupport = ApiVersionSupport.Unsupported };
     var blocked = WebAuthnReadOnlyCapabilityReport.Create(
         inconsistent, DateTimeOffset.UnixEpoch, "22631", "X64");
-    Equal("BLOCKED_VERSION_SUPPORT_NOT_CONFIRMED", blocked.PlatformDeletionVersionGate,
+    Equal("BLOCKED_INCONSISTENT_DIAGNOSTIC", blocked.PlatformDeletionVersionGate,
         "An unsupported diagnostic status cannot turn into a positive feature gate.");
 }
 
@@ -378,6 +382,81 @@ static void ViewModelReportFailure()
         "Unexpected diagnostic failure must report an unknown version.");
     Equal("NOT PERFORMED", json.RootElement.GetProperty("RealCredentialOperation").GetString(),
         "Unexpected diagnostic failure must not be mistaken for a ceremony.");
+}
+
+static void InconsistentNativeReport()
+{
+    var contradictions = new[]
+    {
+        new WebAuthnCapabilityResult(CapabilityAvailability.Unavailable,
+            CapabilityAvailability.Available, 7, ApiVersionSupport.Supported,
+            CapabilityAvailability.Available, null),
+        new WebAuthnCapabilityResult(CapabilityAvailability.Available,
+            CapabilityAvailability.Available, null, ApiVersionSupport.Supported,
+            CapabilityAvailability.Unknown, null),
+        new WebAuthnCapabilityResult(CapabilityAvailability.Available,
+            CapabilityAvailability.Available, 0, ApiVersionSupport.Supported,
+            CapabilityAvailability.Unknown, null),
+        new WebAuthnCapabilityResult(CapabilityAvailability.Available,
+            CapabilityAvailability.Available, 7, ApiVersionSupport.Unknown,
+            CapabilityAvailability.Available, null),
+        new WebAuthnCapabilityResult(CapabilityAvailability.Available,
+            CapabilityAvailability.Available, 7, ApiVersionSupport.Supported,
+            CapabilityAvailability.Available, "HRESULT 0x80000001")
+    };
+    foreach (var inconsistent in contradictions)
+    {
+        var report = WebAuthnReadOnlyCapabilityReport.Create(
+            inconsistent, DateTimeOffset.UnixEpoch, "22631", "X64");
+        Equal("INCONSISTENT_BLOCKED", report.DiagnosticConsistency,
+            "Contradictory diagnostic must never support readiness.");
+        Equal("BLOCKED_INCONSISTENT_DIAGNOSTIC", report.BasicMakeGetVersionGate,
+            "Contradictory diagnostic blocks basic features.");
+        Equal("BLOCKED_INCONSISTENT_DIAGNOSTIC", report.PlatformDeletionVersionGate,
+            "Contradictory diagnostic blocks deletion version gate.");
+    }
+}
+
+static void UnknownDiagnosticVersionGates()
+{
+    var unknown = new WebAuthnCapabilityResult(
+        CapabilityAvailability.Available, CapabilityAvailability.Available, null,
+        ApiVersionSupport.Unknown, CapabilityAvailability.Unknown, "version missing");
+    var report = WebAuthnReadOnlyCapabilityReport.Create(
+        unknown, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("UNKNOWN", report.PlatformInventoryVersionGate,
+        "Unknown version cannot pass inventory version gate.");
+    Equal("NOT_ESTABLISHED_NO_CREDENTIAL_OPERATIONS", report.PlatformOperationReadiness,
+        "Version report must never claim credential operation readiness.");
+    var unsupported = unknown with { ApiVersion = 0, VersionSupport = ApiVersionSupport.Unsupported };
+    var below = WebAuthnReadOnlyCapabilityReport.Create(
+        unsupported, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("UNSUPPORTED_BY_REPORTED_VERSION", below.BasicMakeGetVersionGate,
+        "API version zero cannot pass even the basic version gate.");
+}
+
+static void ReadOnlyWpfBindingContract()
+{
+    // CI is headless: this inspects the compiled project's source XAML contract,
+    // not an instantiated WPF window. Building the WPF project is a separate CI step.
+    var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "MainWindow.xaml");
+    var window = XDocument.Load(path);
+    var ns = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    var matched = window.Descendants(ns + "TextBox")
+        .Where(element => (string?)element.Attribute("Text") is string binding &&
+            binding.Contains("StructuredReportJson", StringComparison.Ordinal)).ToArray();
+    Equal(1, matched.Length, "Exactly one structured report textbox must exist.");
+    var textBinding = (string?)matched[0].Attribute("Text") ?? "";
+    True(textBinding.Contains("Mode=OneWay", StringComparison.Ordinal),
+        "WPF TextBox must not default to TwoWay for a private setter.");
+    True(!textBinding.Contains("Mode=TwoWay", StringComparison.Ordinal) &&
+        !textBinding.Contains("Mode=OneWayToSource", StringComparison.Ordinal),
+        "WPF report binding must never write to its source.");
+    Equal("True", (string?)matched[0].Attribute("IsReadOnly"),
+        "Structured report textbox must be read-only in the UI.");
+    var property = typeof(WebAuthnDiagnosticsViewModel).GetProperty("StructuredReportJson");
+    True(property is not null && property.GetSetMethod() is null,
+        "ViewModel should not expose a public report setter.");
 }
 
 static ApprovalProposal Proposal(

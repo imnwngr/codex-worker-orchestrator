@@ -36,7 +36,12 @@ internal static class LabTests
         ("incompatible gate and workflow journals are rejected", MismatchedJournals),
         ("failed fake enrollment reconciliation remains unknown", EnrollmentReconciliationFailure),
         ("parallel fake replay attempts consume one nonce once", ConcurrentFakeConsumption),
-        ("unknown deletion that did not take effect requires reconciliation before retry", CleanupUnknownStillPresent)
+        ("unknown deletion that did not take effect requires reconciliation before retry", CleanupUnknownStillPresent),
+        ("duplicate inventory identity blocks unknown enrollment reconciliation", DuplicateInventory),
+        ("malformed inventory blocks cleanup confirmation", MalformedCleanupInventory),
+        ("duplicate inventory blocks cleanup confirmation", DuplicateCleanupInventory),
+        ("oversized inventory is rejected by synthetic validator", OversizedInventory),
+        ("recovery journal rejects forged operations and invalid outcomes", JournalRejectsInvalidTransitions)
     ];
 
     public static int Count => Tests.Count;
@@ -610,6 +615,94 @@ internal static class LabTests
             "A second fake deletion must be independently inventoried.");
         Equal(2, native.DeletionCalls,
             "One uncertain attempt and one explicit post-reconciliation retry.");
+    }
+
+    private static async Task DuplicateInventory()
+    {
+        var native = new FakeNativeWebAuthn { RegistrationOutcomeUnknown = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await ThrowsAsync<FakeNativeFailureException>(() => workflow.EnrollAsync(default));
+        var id = native.FakeCredentialIds.Single();
+        native.NextInventorySnapshot = [id, id];
+        await ThrowsAsync<InvalidDataException>(() =>
+            workflow.ReconcileUnknownEnrollmentAsync(default));
+        Equal(LabState.EnrollmentOutcomeUnknown, workflow.State,
+            "Duplicate IDs cannot be silently deduplicated or confirm an orphan.");
+        await workflow.ReconcileUnknownEnrollmentAsync(default);
+        Equal(LabState.OrphanedCredential, workflow.State,
+            "A subsequent valid snapshot permits explicit recovery.");
+    }
+
+    private static async Task MalformedCleanupInventory()
+    {
+        var native = new FakeNativeWebAuthn();
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        native.NextInventorySnapshot = ["%%%invalid%%%"];
+        await ThrowsAsync<InvalidDataException>(() =>
+            workflow.RevokeAndCleanFakeAsync(default));
+        Equal(LabState.CleanupOutcomeUnknown, workflow.State,
+            "Unparseable inventory must not establish cleanup success.");
+        True(workflow.Credential is null, "Trust remains revoked.");
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.RevokedAndCleaned, workflow.State,
+            "Valid inventory subsequently confirms fake ID absence.");
+    }
+
+    private static async Task DuplicateCleanupInventory()
+    {
+        var native = new FakeNativeWebAuthn { DeleteUnknownWithoutEffect = true };
+        var workflow = new LabWorkflow(native, new FakeAssertionGate());
+        await workflow.EnrollAsync(default);
+        var id = workflow.Credential!.CredentialId;
+        await ThrowsAsync<FakeNativeFailureException>(() =>
+            workflow.RevokeAndCleanFakeAsync(default));
+        native.NextInventorySnapshot = [id, id];
+        await ThrowsAsync<InvalidDataException>(() =>
+            workflow.ReconcileUnknownCleanupAsync(default));
+        Equal(LabState.CleanupOutcomeUnknown, workflow.State,
+            "Duplicated inventory cannot unblock cleanup retries.");
+        await ThrowsAsync<InvalidOperationException>(() =>
+            workflow.RetryFakeCleanupAsync(default));
+        await workflow.ReconcileUnknownCleanupAsync(default);
+        Equal(LabState.RevokedCleanupPending, workflow.State,
+            "Valid inventory restores an explicit retry path only.");
+    }
+
+    private static Task OversizedInventory()
+    {
+        var valid = Convert.ToBase64String(Encoding.ASCII.GetBytes("fake-credential-9999"))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var tooMany = Enumerable.Repeat(valid, 129).ToArray();
+        Throws<InvalidDataException>(() => SyntheticInventory.Validate(tooMany));
+        Throws<InvalidDataException>(() => SyntheticInventory.Validate(["not*canonical"]));
+        return Task.CompletedTask;
+    }
+
+    private static Task JournalRejectsInvalidTransitions()
+    {
+        var journal = new RecoveryJournal();
+        Throws<InvalidOperationException>(() => journal.Begin(
+            RecoveryOperation.Cleanup, LabState.RevokedCleanupPending));
+        var id = journal.Begin(RecoveryOperation.Enrollment, LabState.EnrollmentStarted);
+        Throws<InvalidOperationException>(() => journal.Record(
+            "forged-operation-id", RecoveryOperation.Enrollment,
+            LabState.CredentialPinnedInMemory, RecoveryOutcome.Succeeded));
+        Throws<InvalidOperationException>(() => journal.Record(
+            id, RecoveryOperation.Enrollment,
+            LabState.RevokedAndCleaned, RecoveryOutcome.Succeeded));
+        Throws<InvalidOperationException>(() => journal.Begin(
+            RecoveryOperation.Assertion, LabState.AssertionStarted));
+        journal.Record(id, RecoveryOperation.Enrollment,
+            LabState.EnrollmentOutcomeUnknown, RecoveryOutcome.Unknown);
+        Throws<InvalidOperationException>(() => journal.Record(
+            id, RecoveryOperation.Enrollment,
+            LabState.CredentialPinnedInMemory, RecoveryOutcome.Succeeded));
+        var reconciliationId = journal.Begin(
+            RecoveryOperation.Reconciliation, LabState.EnrollmentOutcomeUnknown);
+        journal.Record(reconciliationId, RecoveryOperation.Reconciliation,
+            LabState.Ready, RecoveryOutcome.Succeeded);
+        return Task.CompletedTask;
     }
 
     private static byte[] DecodeBase64Url(string value)

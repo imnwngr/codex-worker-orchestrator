@@ -63,6 +63,8 @@ internal sealed class RecoveryJournal
     {
         if (operation == RecoveryOperation.None)
             throw new ArgumentOutOfRangeException(nameof(operation));
+        if (!CanBegin(operation, Current.State, state))
+            throw new InvalidOperationException("fake_journal_invalid_operation_transition");
         var operationId = $"synthetic-op-{++_operationSequence:D6}";
         Update(operationId, operation, state, RecoveryOutcome.Started);
         return operationId;
@@ -82,8 +84,69 @@ internal sealed class RecoveryJournal
     {
         if (string.IsNullOrWhiteSpace(operationId))
             throw new ArgumentException("operation_id_required", nameof(operationId));
+        if (!StringComparer.Ordinal.Equals(operationId, Current.OperationId) ||
+            operation != Current.Operation ||
+            !CanRecord(operation, Current.State, Current.Outcome, state, outcome))
+            throw new InvalidOperationException("fake_journal_invalid_record_transition");
         Update(operationId, operation, state, outcome, credentialId, algorithm,
             publicKeySha256, cancellationRequested, cleanupAttempts, errorCode);
+    }
+
+    private static bool CanBegin(RecoveryOperation operation, LabState previous, LabState next) =>
+        operation switch
+        {
+            RecoveryOperation.Enrollment => previous == LabState.Ready &&
+                next == LabState.EnrollmentStarted,
+            RecoveryOperation.Assertion => previous == LabState.CredentialPinnedInMemory &&
+                next == LabState.AssertionStarted,
+            RecoveryOperation.Cleanup =>
+                (previous is LabState.CredentialPinnedInMemory or LabState.AssertionContractMatched &&
+                    next == LabState.RevokedCleanupPending) ||
+                (previous == next && next is
+                    (LabState.RevokedCleanupPending or LabState.OrphanedCredential or LabState.CreatedUnpinned)),
+            RecoveryOperation.Reconciliation => previous == next && next is
+                (LabState.EnrollmentOutcomeUnknown or LabState.CleanupOutcomeUnknown or
+                    LabState.OrphanCleanupOutcomeUnknown),
+            _ => false
+        };
+
+    private static bool CanRecord(
+        RecoveryOperation operation, LabState previous, RecoveryOutcome previousOutcome,
+        LabState next, RecoveryOutcome outcome)
+    {
+        if (previousOutcome is not (RecoveryOutcome.Started or RecoveryOutcome.Succeeded))
+            return false;
+        return operation switch
+        {
+            RecoveryOperation.Enrollment =>
+                (next == LabState.CreatedUnpinned && outcome is
+                    RecoveryOutcome.Succeeded or RecoveryOutcome.Failed) ||
+                (next == LabState.CredentialPinnedInMemory &&
+                    previous == LabState.CreatedUnpinned && outcome == RecoveryOutcome.Succeeded) ||
+                (next == LabState.OrphanedCredential && outcome is
+                    RecoveryOutcome.Failed or RecoveryOutcome.Unknown) ||
+                (next == LabState.EnrollmentOutcomeUnknown && outcome == RecoveryOutcome.Unknown) ||
+                (next == LabState.Failed && outcome == RecoveryOutcome.Failed),
+            RecoveryOperation.Assertion =>
+                (next == LabState.AssertionContractMatched && outcome == RecoveryOutcome.Succeeded) ||
+                (next == LabState.Cancelled && outcome == RecoveryOutcome.Unknown) ||
+                (next == LabState.Failed && outcome == RecoveryOutcome.Failed),
+            RecoveryOperation.Cleanup =>
+                (next == LabState.RevokedCleanupPending && outcome is
+                    RecoveryOutcome.Started or RecoveryOutcome.Failed) ||
+                (next == LabState.OrphanedCredential && outcome == RecoveryOutcome.Failed) ||
+                (next == LabState.Ready && outcome == RecoveryOutcome.Succeeded) ||
+                (next == LabState.RevokedAndCleaned && outcome == RecoveryOutcome.Succeeded) ||
+                (next is (LabState.CleanupOutcomeUnknown or LabState.OrphanCleanupOutcomeUnknown) &&
+                    outcome == RecoveryOutcome.Unknown),
+            RecoveryOperation.Reconciliation =>
+                (next is (LabState.Ready or LabState.OrphanedCredential or
+                    LabState.RevokedCleanupPending or LabState.RevokedAndCleaned) &&
+                    outcome == RecoveryOutcome.Succeeded) ||
+                (next is (LabState.EnrollmentOutcomeUnknown or LabState.CleanupOutcomeUnknown or
+                    LabState.OrphanCleanupOutcomeUnknown) && outcome == RecoveryOutcome.Unknown),
+            _ => false
+        };
     }
 
     public bool TryConsume(string challengeId, string nonce)

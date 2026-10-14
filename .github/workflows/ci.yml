@@ -43,6 +43,9 @@ jobs:
           dotnet-version: 8.0.x
           architecture: x64
 
+      - name: Build WPF Approval Agent Mock
+        run: dotnet build .\approval-agent\ApprovalAgent.Mock\ApprovalAgent.Mock.csproj --configuration Release
+
       - name: Build Approval Agent Mock tests
         run: dotnet build .\approval-agent\ApprovalAgent.MockTests\ApprovalAgent.MockTests.csproj --configuration Release
 

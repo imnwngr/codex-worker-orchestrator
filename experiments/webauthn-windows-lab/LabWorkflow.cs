@@ -65,9 +65,8 @@ internal sealed class LabWorkflow
             State = LabState.Cancelled;
             cancellationToken.ThrowIfCancellationRequested();
         }
-        _credentialIdsBeforeEnrollment =
-            (await _native.SimulateCredentialInventoryAsync(default))
-            .ToHashSet(StringComparer.Ordinal);
+        _credentialIdsBeforeEnrollment = SyntheticInventory.Validate(
+            await _native.SimulateCredentialInventoryAsync(cancellationToken));
         State = LabState.EnrollmentStarted;
         _enrollmentOperationId =
             _journal.Begin(RecoveryOperation.Enrollment, State);
@@ -140,9 +139,10 @@ internal sealed class LabWorkflow
         var operationId = _journal.Begin(RecoveryOperation.Reconciliation, State);
         try
         {
-            var inventory = await _native.SimulateCredentialInventoryAsync(cancellationToken);
+            var inventory = SyntheticInventory.Validate(
+                await _native.SimulateCredentialInventoryAsync(cancellationToken));
             var added = inventory.Where(id => !_credentialIdsBeforeEnrollment.Contains(id))
-                .Distinct(StringComparer.Ordinal).ToArray();
+                .ToArray();
             if (added.Length == 1)
             {
                 OrphanCredentialId = added[0];
@@ -258,8 +258,9 @@ internal sealed class LabWorkflow
         var operationId = _journal.Begin(RecoveryOperation.Reconciliation, State);
         try
         {
-            var inventory = await _native.SimulateCredentialInventoryAsync(cancellationToken);
-            if (!inventory.Contains(id, StringComparer.Ordinal))
+            var inventory = SyntheticInventory.Validate(
+                await _native.SimulateCredentialInventoryAsync(cancellationToken));
+            if (!inventory.Contains(id))
             {
                 if (isOrphan)
                 {
@@ -304,8 +305,9 @@ internal sealed class LabWorkflow
         {
             await _native.SimulatePlatformCredentialDeletionAsync(
                 credentialId, cancellationToken);
-            var inventory = await _native.SimulateCredentialInventoryAsync(cancellationToken);
-            if (inventory.Contains(credentialId, StringComparer.Ordinal))
+            var inventory = SyntheticInventory.Validate(
+                await _native.SimulateCredentialInventoryAsync(cancellationToken));
+            if (inventory.Contains(credentialId))
                 throw new FakeNativeFailureException("Fake inventory still contains the ID.");
 
             if (isOrphan)

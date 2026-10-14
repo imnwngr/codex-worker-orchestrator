@@ -142,6 +142,8 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
     public bool DeleteUnknownWithoutEffect { get; set; }
     public bool FailNextInventory { get; set; }
     public bool CancelAfterDeletion { get; set; }
+    // Synthetic malformed/ambiguous snapshots for deterministic negative tests only.
+    public IReadOnlyCollection<string>? NextInventorySnapshot { get; set; }
     public int DeletionCalls { get; private set; }
     public IReadOnlyCollection<string> FakeCredentialIds => _fakePlatformCredentialIds;
 
@@ -259,7 +261,9 @@ internal sealed class FakeNativeWebAuthn : IFakeNativeWebAuthn
             FailNextInventory = false;
             throw new FakeNativeFailureException("Synthetic inventory unavailable.", outcomeUnknown: true);
         }
+        var snapshot = NextInventorySnapshot;
+        NextInventorySnapshot = null;
         return Task.FromResult<IReadOnlyCollection<string>>(
-            _fakePlatformCredentialIds.ToArray());
+            snapshot ?? _fakePlatformCredentialIds.ToArray());
     }
 }

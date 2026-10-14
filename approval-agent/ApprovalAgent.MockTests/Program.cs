@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using ApprovalAgent.Mock.Models;
 using ApprovalAgent.Mock.Services;
 using ApprovalAgent.Mock.ViewModels;
@@ -21,7 +22,13 @@ var tests = new (string Name, Action Run)[]
     ("rejects nonzero HRESULT even when positive", PositiveHResultIsNotSuccess),
     ("contains exceptions and leaves mock approval independent", DiagnosticExceptionIsIsolated),
     ("reports missing DLL and API as unavailable", MissingNativeLibrary),
-    ("handles missing required native export as unavailable", MissingNativeExport)
+    ("handles missing required native export as unavailable", MissingNativeExport),
+    ("reports API version query exceptions as unknown", ApiVersionQueryFailure),
+    ("reports fail-closed API-version feature gates", FeatureVersionGates),
+    ("reports capability environment and operation status as structured JSON", StructuredCapabilityReport),
+    ("redacts diagnostic error details from structured reports", StructuredReportRedaction),
+    ("blocks all feature gates when the DLL or required exports are unavailable", ReportUnavailableGates),
+    ("reports unexpected diagnostic failures safely", ViewModelReportFailure)
 };
 
 var failures = 0;
@@ -252,6 +259,127 @@ static void MissingNativeExport()
     True(result.Error?.Contains("required WebAuthn API function", StringComparison.Ordinal) == true,
         "The missing-export condition should be exposed in diagnostics.");
 }
+static void ApiVersionQueryFailure()
+{
+    var native = new FakeNativeApi(new FakeSession(1, 0, true, throwVersion: true));
+    var result = new WindowsWebAuthnCapabilityDiagnosticService(native).GetDiagnostics();
+    Equal(null, result.ApiVersion, "A failed version query must not invent a version.");
+    Equal(ApiVersionSupport.Unknown, result.VersionSupport, "Version status is unknown.");
+    Equal(CapabilityAvailability.Unknown, result.PlatformAuthenticatorAvailability,
+        "No capability query follows a failed version query.");
+}
+
+static void FeatureVersionGates()
+{
+    var api3 = new WebAuthnCapabilityResult(
+        CapabilityAvailability.Available, CapabilityAvailability.Available, 3,
+        ApiVersionSupport.Supported, CapabilityAvailability.Available, null);
+    var below = WebAuthnReadOnlyCapabilityReport.Create(
+        api3, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("VERSION_GATE_MET_EXPORTS_AND_BEHAVIOR_UNVERIFIED",
+        below.BasicMakeGetVersionGate, "API v3 meets only the basic header version gate.");
+    Equal("UNSUPPORTED_BY_REPORTED_VERSION", below.PlatformInventoryVersionGate,
+        "API v3 is below the header's inventory feature gate.");
+    Equal("UNSUPPORTED_BY_REPORTED_VERSION", below.PlatformDeletionVersionGate,
+        "API v3 is below the header's deletion feature gate.");
+
+    var api4 = api3 with { ApiVersion = 4 };
+    var at = WebAuthnReadOnlyCapabilityReport.Create(
+        api4, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("VERSION_GATE_MET_EXPORTS_AND_BEHAVIOR_UNVERIFIED",
+        at.PlatformInventoryVersionGate, "API v4 meets the header version gate only.");
+    Equal("VERSION_GATE_MET_EXPORTS_AND_BEHAVIOR_UNVERIFIED",
+        at.PlatformDeletionVersionGate, "API v4 does not prove deletion behavior.");
+
+    var zero = api3 with { ApiVersion = 0, VersionSupport = ApiVersionSupport.Unsupported };
+    var unsupported = WebAuthnReadOnlyCapabilityReport.Create(
+        zero, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("UNSUPPORTED_BY_REPORTED_VERSION", unsupported.BasicMakeGetVersionGate,
+        "API v0 cannot meet the basic feature gate.");
+
+    var inconsistent = api4 with { VersionSupport = ApiVersionSupport.Unsupported };
+    var blocked = WebAuthnReadOnlyCapabilityReport.Create(
+        inconsistent, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("BLOCKED_VERSION_SUPPORT_NOT_CONFIRMED", blocked.PlatformDeletionVersionGate,
+        "An unsupported diagnostic status cannot turn into a positive feature gate.");
+}
+
+static void StructuredCapabilityReport()
+{
+    var result = new WebAuthnCapabilityResult(
+        CapabilityAvailability.Available, CapabilityAvailability.Available, 4,
+        ApiVersionSupport.Supported, CapabilityAvailability.Available, null);
+    var timestamp = DateTimeOffset.Parse("2030-01-02T03:04:05Z");
+    var report = WebAuthnReadOnlyCapabilityReport.Create(
+        result, timestamp, "22631", "X64");
+    using var json = JsonDocument.Parse(report.ToJson());
+    var root = json.RootElement;
+    Equal("READ-ONLY CAPABILITY REPORT — NO CREDENTIAL OPERATION",
+        root.GetProperty("Label").GetString(), "Report label.");
+    Equal("22631", root.GetProperty("WindowsBuild").GetString(), "Windows build.");
+    Equal("X64", root.GetProperty("ProcessArchitecture").GetString(), "Architecture.");
+    Equal(timestamp, root.GetProperty("DiagnosticTimestampUtc").GetDateTimeOffset(),
+        "Diagnostic timestamp is exact UTC.");
+    Equal((uint)4, root.GetProperty("ReportedApiVersion").GetUInt32(), "API version.");
+    Equal("Available", root.GetProperty("PlatformAuthenticatorCapability").GetString(),
+        "This is only the read-only capability query result.");
+    Equal("NOT PERFORMED", root.GetProperty("RealCredentialOperation").GetString(),
+        "A diagnostic does not perform a ceremony.");
+    True(root.GetProperty("FeatureGateEvidence").GetString()!.Contains("unverified", StringComparison.OrdinalIgnoreCase),
+        "The feature gate must explicitly disavow live feature evidence.");
+}
+
+static void StructuredReportRedaction()
+{
+    var result = new WebAuthnCapabilityResult(
+        CapabilityAvailability.Unknown, CapabilityAvailability.Unknown, null,
+        ApiVersionSupport.Unknown, CapabilityAvailability.Unknown,
+        "account-name=private; path=C:\\sensitive");
+    var report = WebAuthnReadOnlyCapabilityReport.Create(
+        result, DateTimeOffset.UnixEpoch, "22631", "X64");
+    var json = report.ToJson();
+    True(!json.Contains("private", StringComparison.OrdinalIgnoreCase),
+        "Raw diagnostic detail must not be serialized.");
+    True(!json.Contains("sensitive", StringComparison.OrdinalIgnoreCase),
+        "Paths and account information must not be serialized.");
+    True(json.Contains("DIAGNOSTIC_FAILED_DETAILS_REDACTED", StringComparison.Ordinal),
+        "A safe error category remains available.");
+}
+
+static void ReportUnavailableGates()
+{
+    var result = new WebAuthnCapabilityResult(
+        CapabilityAvailability.Unavailable, CapabilityAvailability.Unavailable, null,
+        ApiVersionSupport.Unknown, CapabilityAvailability.Unknown, "library unavailable");
+    var report = WebAuthnReadOnlyCapabilityReport.Create(
+        result, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("BLOCKED_API_UNAVAILABLE", report.BasicMakeGetVersionGate, "Basic API gate.");
+    Equal("BLOCKED_API_UNAVAILABLE", report.PlatformInventoryVersionGate, "Inventory gate.");
+    Equal("BLOCKED_API_UNAVAILABLE", report.PlatformDeletionVersionGate, "Deletion gate.");
+    Equal("UNKNOWN", report.ApiVersionState, "An absent API version is unknown.");
+
+    var exportMissing = result with
+    {
+        LibraryAvailability = CapabilityAvailability.Available,
+        Error = "A required WebAuthn API function is unavailable: EntryPointNotFoundException"
+    };
+    var missing = WebAuthnReadOnlyCapabilityReport.Create(
+        exportMissing, DateTimeOffset.UnixEpoch, "22631", "X64");
+    Equal("DLL_OR_EXPORT_UNAVAILABLE", missing.DiagnosticErrorCategory,
+        "A known missing-export error maps to an explicit safe category.");
+}
+
+static void ViewModelReportFailure()
+{
+    var viewModel = new WebAuthnDiagnosticsViewModel();
+    viewModel.ApplyFailure();
+    using var json = JsonDocument.Parse(viewModel.StructuredReportJson);
+    Equal("UNKNOWN", json.RootElement.GetProperty("ApiVersionState").GetString(),
+        "Unexpected diagnostic failure must report an unknown version.");
+    Equal("NOT PERFORMED", json.RootElement.GetProperty("RealCredentialOperation").GetString(),
+        "Unexpected diagnostic failure must not be mistaken for a ceremony.");
+}
+
 static ApprovalProposal Proposal(
     string task,
     DateTimeOffset? expiresAt = null) =>
@@ -290,10 +418,19 @@ sealed class FakeNativeApi : IWebAuthnNativeApi
     public WebAuthnNativeOpenResult Open() => _openResult;
 }
 
-sealed class FakeSession(uint version, int hresult, bool available) : IWebAuthnNativeSession
+sealed class FakeSession(
+    uint version,
+    int hresult,
+    bool available,
+    bool throwVersion = false) : IWebAuthnNativeSession
 {
     public int AvailabilityQueryCount { get; private set; }
-    public uint GetApiVersionNumber() => version;
+    public uint GetApiVersionNumber()
+    {
+        if (throwVersion)
+            throw new InvalidOperationException("account-name=private");
+        return version;
+    }
 
     public int IsUserVerifyingPlatformAuthenticatorAvailable(out bool result)
     {

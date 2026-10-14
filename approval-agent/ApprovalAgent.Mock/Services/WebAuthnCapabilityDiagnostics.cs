@@ -1,7 +1,9 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace ApprovalAgent.Mock.Services;
 
@@ -26,6 +28,99 @@ public sealed record WebAuthnCapabilityResult(
     ApiVersionSupport VersionSupport,
     CapabilityAvailability PlatformAuthenticatorAvailability,
     string? Error);
+
+public sealed record WebAuthnReadOnlyCapabilityReport(
+    string Label,
+    DateTimeOffset DiagnosticTimestampUtc,
+    string WindowsBuild,
+    string ProcessArchitecture,
+    string DllAvailability,
+    string ReadOnlyApiAvailability,
+    uint? ReportedApiVersion,
+    string ApiVersionState,
+    string PlatformAuthenticatorCapability,
+    string BasicMakeGetVersionGate,
+    string PlatformInventoryVersionGate,
+    string PlatformDeletionVersionGate,
+    string CheckedExports,
+    string FeatureGateEvidence,
+    string RealCredentialOperation,
+    string? DiagnosticErrorCategory)
+{
+    private const uint BasicApiVersion = 1;
+    private const uint PlatformInventoryAndDeletionApiVersion = 4;
+
+    public static WebAuthnReadOnlyCapabilityReport Create(
+        WebAuthnCapabilityResult result,
+        DateTimeOffset timestampUtc,
+        string windowsBuild,
+        string processArchitecture)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentException.ThrowIfNullOrWhiteSpace(windowsBuild);
+        ArgumentException.ThrowIfNullOrWhiteSpace(processArchitecture);
+
+        return new WebAuthnReadOnlyCapabilityReport(
+            "READ-ONLY CAPABILITY REPORT — NO CREDENTIAL OPERATION",
+            timestampUtc.ToUniversalTime(),
+            windowsBuild,
+            processArchitecture,
+            result.LibraryAvailability.ToString(),
+            result.ApiAvailability.ToString(),
+            result.ApiVersion,
+            result.ApiVersion is null ? "UNKNOWN" : result.VersionSupport.ToString(),
+            result.PlatformAuthenticatorAvailability.ToString(),
+            VersionGate(result, BasicApiVersion),
+            VersionGate(result, PlatformInventoryAndDeletionApiVersion),
+            VersionGate(result, PlatformInventoryAndDeletionApiVersion),
+            "WebAuthNGetApiVersionNumber; " +
+            "WebAuthNIsUserVerifyingPlatformAuthenticatorAvailable",
+            "Version gates are based on the reviewed Windows SDK header map. " +
+            "Other feature exports and runtime behavior remain unverified (not probed).",
+            "NOT PERFORMED",
+            ErrorCategory(result.Error));
+    }
+
+    public string ToJson() =>
+        JsonSerializer.Serialize(this, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+
+    private static string VersionGate(WebAuthnCapabilityResult result, uint minimum)
+    {
+        if (result.LibraryAvailability == CapabilityAvailability.Unavailable ||
+            result.ApiAvailability == CapabilityAvailability.Unavailable)
+            return "BLOCKED_API_UNAVAILABLE";
+        if (result.LibraryAvailability == CapabilityAvailability.Unknown ||
+            result.ApiAvailability == CapabilityAvailability.Unknown ||
+            result.ApiVersion is null ||
+            result.VersionSupport == ApiVersionSupport.Unknown)
+            return "UNKNOWN";
+        if (result.ApiVersion.Value < minimum)
+            return "UNSUPPORTED_BY_REPORTED_VERSION";
+        if (result.VersionSupport != ApiVersionSupport.Supported)
+            return "BLOCKED_VERSION_SUPPORT_NOT_CONFIRMED";
+        return "VERSION_GATE_MET_EXPORTS_AND_BEHAVIOR_UNVERIFIED";
+    }
+
+    private static string? ErrorCategory(string? error)
+    {
+        if (error is null) return null;
+        if (error.Contains("HRESULT", StringComparison.OrdinalIgnoreCase))
+            return "NATIVE_QUERY_NON_S_OK";
+        if (error.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+            error.Contains("required WebAuthn API function", StringComparison.OrdinalIgnoreCase))
+            return "DLL_OR_EXPORT_UNAVAILABLE";
+        if (error.Contains("could not determine", StringComparison.OrdinalIgnoreCase))
+            return "VERSION_QUERY_FAILED";
+        if (error.Contains("could not load", StringComparison.OrdinalIgnoreCase))
+            return "NATIVE_LOAD_FAILED";
+        if (error.Contains("could not be completed", StringComparison.OrdinalIgnoreCase))
+            return "CAPABILITY_QUERY_FAILED";
+        return "DIAGNOSTIC_FAILED_DETAILS_REDACTED";
+    }
+}
 
 public interface IWebAuthnNativeSession : IDisposable
 {
@@ -172,6 +267,7 @@ public sealed class WebAuthnDiagnosticsViewModel : INotifyPropertyChanged
     private string _versionStatus = "Not checked";
     private string _authenticatorStatus = "Not checked";
     private string _errorStatus = "No diagnostic errors reported.";
+    private string _structuredReportJson = "Capability report not available.";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -205,6 +301,12 @@ public sealed class WebAuthnDiagnosticsViewModel : INotifyPropertyChanged
         private set => SetField(ref _errorStatus, value);
     }
 
+    public string StructuredReportJson
+    {
+        get => _structuredReportJson;
+        private set => SetField(ref _structuredReportJson, value);
+    }
+
     public void Apply(WebAuthnCapabilityResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
@@ -215,6 +317,7 @@ public sealed class WebAuthnDiagnosticsViewModel : INotifyPropertyChanged
             : result.VersionSupport.ToString();
         AuthenticatorStatus = result.PlatformAuthenticatorAvailability.ToString();
         ErrorStatus = result.Error ?? "No diagnostic errors reported.";
+        StructuredReportJson = CreateReport(result);
     }
 
     public void ApplyFailure()
@@ -224,7 +327,21 @@ public sealed class WebAuthnDiagnosticsViewModel : INotifyPropertyChanged
         VersionStatus = ApiVersionSupport.Unknown.ToString();
         AuthenticatorStatus = CapabilityAvailability.Unknown.ToString();
         ErrorStatus = "Diagnostics could not complete. No approval action was taken.";
+        StructuredReportJson = CreateReport(new WebAuthnCapabilityResult(
+            CapabilityAvailability.Unknown,
+            CapabilityAvailability.Unknown,
+            null,
+            ApiVersionSupport.Unknown,
+            CapabilityAvailability.Unknown,
+            "diagnostics_failed"));
     }
+
+    private static string CreateReport(WebAuthnCapabilityResult result) =>
+        WebAuthnReadOnlyCapabilityReport.Create(
+            result,
+            DateTimeOffset.UtcNow,
+            Environment.OSVersion.Version.Build.ToString(CultureInfo.InvariantCulture),
+            RuntimeInformation.ProcessArchitecture.ToString()).ToJson();
 
     private void SetField(ref string field, string value,
         [CallerMemberName] string? propertyName = null)

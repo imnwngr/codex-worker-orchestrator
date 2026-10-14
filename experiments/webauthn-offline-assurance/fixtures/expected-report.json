@@ -1,0 +1,261 @@
+{
+  "reportSchemaVersion": 1,
+  "manifestSchemaVersion": 1,
+  "invariantRegistrySchemaVersion": 1,
+  "userSuppliedExpectedSourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "classifications": [
+    "SYNTHETIC_POLICY_VALIDATED",
+    "SYNTHETIC_EVIDENCE_INCOMPLETE",
+    "READ_ONLY_RUNTIME_UNOBSERVED",
+    "REAL_CREDENTIAL_OPERATIONS_BLOCKED",
+    "PRODUCTION_AUTHORIZATION_BLOCKED"
+  ],
+  "invariants": [
+    {
+      "invariantId": "AUTH-01",
+      "registryStatus": "SOURCE_REVIEWED",
+      "evidenceCategory": "source-review",
+      "testReferences": [
+        "ReadinessIsInformational",
+        "ExperimentalManifest"
+      ],
+      "limitations": "Offline verifier output is observational and not a production authorization input.",
+      "verificationStatus": "SOURCE_REVIEW_OR_DOCUMENTATION_ONLY"
+    },
+    {
+      "invariantId": "COLLISION-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "RegistrationIdCollision",
+        "DisappearingCollisionRemainsUnknown",
+        "CollisionInjectionPreservesExistingCredential"
+      ],
+      "limitations": "Synthetic adapter provenance is not OS attestation.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "CRED-ID-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "RegistrationIdCollision",
+        "MalformedOrphanIdCannotBeDeleted",
+        "UnboundValidOrphanIdCannotBeDeleted"
+      ],
+      "limitations": "IDs and inventory are synthetic and do not establish OS credential identity.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "INVENTORY-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "UnknownEnrollmentIdRemainsUntrusted",
+        "EnrollmentBaselineLossRemainsUnknown",
+        "CleanupRejectsUnexpectedInventoryIdentity"
+      ],
+      "limitations": "The fake inventory is not a real authenticator inventory.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "JOURNAL-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "JournalTransitionMatrix",
+        "StoreContinuationIsValidated",
+        "JournalRejectsInvalidTransitions",
+        "BoundedRecoverySequenceExploration"
+      ],
+      "limitations": "Tests exercise an in-memory store simulation.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "NATIVE-01",
+      "registryStatus": "SOURCE_REVIEWED",
+      "evidenceCategory": "source-review",
+      "testReferences": [
+        "FakeOwnership",
+        "RegistrationFailures"
+      ],
+      "limitations": "Source boundary review is not a binary attestation or runtime sandbox.",
+      "verificationStatus": "SOURCE_REVIEW_OR_DOCUMENTATION_ONLY"
+    },
+    {
+      "invariantId": "READY-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "ReadinessIsInformational",
+        "ExperimentalManifest"
+      ],
+      "limitations": "A static manifest is policy data and cannot establish runtime readiness.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "REPLAY-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "StoreReplayContinuity",
+        "StoreReplacedLedgerBlocksConsumption",
+        "ReplayWithFreshJournal"
+      ],
+      "limitations": "Does not provide replay protection across real OS process restarts.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "RESTORE-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "StoreRestoreRequiresValidGenesis",
+        "JournalReconstructionUsesSharedStore"
+      ],
+      "limitations": "Genesis validation does not make the in-memory journal authenticated.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "REVISION-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "StoreRejectsCorruption",
+        "JournalReconstructionUsesSharedStore"
+      ],
+      "limitations": "In-memory simulation is not durable or tamper resistant.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "REVOKE-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "CleanupFailure",
+        "ConcurrentCleanupReconciliation",
+        "CleanupCancellationUnknown"
+      ],
+      "limitations": "Revocation is in-memory fake state, not a persistent production revocation service.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "REVOKE-02",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "ConcurrentCleanupReconciliation",
+        "CleanupOutcomeUnknown",
+        "BoundedRecoverySequenceExploration"
+      ],
+      "limitations": "The simulation does not model durable multi-process authority state.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "RP-ORIGIN-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "FixedOrigin"
+      ],
+      "limitations": "Fixture validation does not prove a real browser origin or application identity.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "TRUST-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "TrustBoundaryPositiveControl",
+        "TrustBoundaryRejectsMetadata",
+        "TrustBoundaryContradictions"
+      ],
+      "limitations": "Synthetic consistency is not application attestation or user approval.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    },
+    {
+      "invariantId": "UNKNOWN-01",
+      "registryStatus": "CODE_ENFORCED_TESTED",
+      "evidenceCategory": "synthetic-regression",
+      "testReferences": [
+        "UnknownEnrollment",
+        "CleanupOutcomeUnknown",
+        "CleanupCancellationUnknown",
+        "ReconciliationFailure"
+      ],
+      "limitations": "Reconciliation uses only deterministic fake inventory.",
+      "verificationStatus": "TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE"
+    }
+  ],
+  "testGroups": [
+    {
+      "testGroup": "approval-agent-mock",
+      "status": "FIXTURE_ONLY",
+      "verificationStatus": "FIXTURE_NOT_EXECUTION_EVIDENCE"
+    },
+    {
+      "testGroup": "webauthn-fake-lab",
+      "status": "FIXTURE_ONLY",
+      "verificationStatus": "FIXTURE_NOT_EXECUTION_EVIDENCE"
+    },
+    {
+      "testGroup": "node-regression",
+      "status": "FIXTURE_ONLY",
+      "verificationStatus": "FIXTURE_NOT_EXECUTION_EVIDENCE"
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "fixture-0",
+      "category": "test-run-summary",
+      "origin": "fixed-test-fixture",
+      "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "testGroup": "approval-agent-mock",
+      "reportedResult": "PASS",
+      "observationTimestampUtc": null,
+      "inputSha256": "23ee82b100e1568416af62493365c96dfbc2520ba5ece7e3627501e723be578a",
+      "integrityStatus": "DIGEST_MATCHES_SUPPLIED_PAYLOAD; PRODUCER_UNAUTHENTICATED",
+      "assumptions": [
+        "fixed offline fixture; does not claim a test was executed"
+      ]
+    },
+    {
+      "evidenceId": "fixture-1",
+      "category": "test-run-summary",
+      "origin": "fixed-test-fixture",
+      "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "testGroup": "webauthn-fake-lab",
+      "reportedResult": "PASS",
+      "observationTimestampUtc": null,
+      "inputSha256": "aaaab73048d97028a526a9a1ea9a41d880c12b7413e36db021ca20010e062326",
+      "integrityStatus": "DIGEST_MATCHES_SUPPLIED_PAYLOAD; PRODUCER_UNAUTHENTICATED",
+      "assumptions": [
+        "fixed offline fixture; does not claim a test was executed"
+      ]
+    },
+    {
+      "evidenceId": "fixture-2",
+      "category": "test-run-summary",
+      "origin": "fixed-test-fixture",
+      "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "testGroup": "node-regression",
+      "reportedResult": "PASS",
+      "observationTimestampUtc": null,
+      "inputSha256": "064fdb35165a77e0622eaa3ca8bc08c843e89de5a89695fc9874e8f51355bf04",
+      "integrityStatus": "DIGEST_MATCHES_SUPPLIED_PAYLOAD; PRODUCER_UNAUTHENTICATED",
+      "assumptions": [
+        "fixed offline fixture; does not claim a test was executed"
+      ]
+    }
+  ],
+  "missingOrUnverifiedEvidence": [
+    "required_test_group_fixture_only"
+  ],
+  "runtimeObservation": "NOT_SUPPLIED",
+  "provenanceLimitations": "EXPECTED_REVISION_IS_USER_SUPPLIED; SELF_REPORTED_OUTPUT_AND_UNKEYED_HASHES_DO_NOT_AUTHENTICATE_EXECUTION_OR_PRODUCER",
+  "readOnlyRuntimeReadiness": "READ_ONLY_RUNTIME_UNOBSERVED",
+  "realCredentialOperations": "NO_GO",
+  "productionAuthorization": "DEFAULT_DENY",
+  "finalSyntheticAssuranceStatus": "POLICY_VALID_EVIDENCE_INCOMPLETE",
+  "independentlyCertified": false
+}

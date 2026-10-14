@@ -1,0 +1,71 @@
+{
+  "evidence": [
+    {
+      "payload": {
+        "observationTimestampUtc": null,
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reportedResult": "PASS",
+        "assumptions": [
+          "fixed offline fixture; does not claim a test was executed"
+        ],
+        "testGroup": "approval-agent-mock"
+      },
+      "category": "test-run-summary",
+      "assumptions": [
+        "fixed offline fixture; does not claim a test was executed"
+      ],
+      "observationTimestampUtc": null,
+      "reportedResult": "PASS",
+      "origin": "fixed-test-fixture",
+      "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "testGroup": "approval-agent-mock",
+      "evidenceId": "fixture-0",
+      "inputSha256": "23ee82b100e1568416af62493365c96dfbc2520ba5ece7e3627501e723be578a"
+    },
+    {
+      "payload": {
+        "observationTimestampUtc": null,
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reportedResult": "PASS",
+        "assumptions": [
+          "fixed offline fixture; does not claim a test was executed"
+        ],
+        "testGroup": "webauthn-fake-lab"
+      },
+      "category": "test-run-summary",
+      "assumptions": [
+        "fixed offline fixture; does not claim a test was executed"
+      ],
+      "observationTimestampUtc": null,
+      "reportedResult": "PASS",
+      "origin": "fixed-test-fixture",
+      "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "testGroup": "webauthn-fake-lab",
+      "evidenceId": "fixture-1",
+      "inputSha256": "aaaab73048d97028a526a9a1ea9a41d880c12b7413e36db021ca20010e062326"
+    },
+    {
+      "payload": {
+        "observationTimestampUtc": null,
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reportedResult": "PASS",
+        "assumptions": [
+          "fixed offline fixture; does not claim a test was executed"
+        ],
+        "testGroup": "node-regression"
+      },
+      "category": "test-run-summary",
+      "assumptions": [
+        "fixed offline fixture; does not claim a test was executed"
+      ],
+      "observationTimestampUtc": null,
+      "reportedResult": "PASS",
+      "origin": "fixed-test-fixture",
+      "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "testGroup": "node-regression",
+      "evidenceId": "fixture-2",
+      "inputSha256": "064fdb35165a77e0622eaa3ca8bc08c843e89de5a89695fc9874e8f51355bf04"
+    }
+  ],
+  "schemaVersion": 1
+}

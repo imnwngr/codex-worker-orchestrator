@@ -148,7 +148,7 @@ claimed based only on a local registry entry being removed.
 
 ## Readiness
 
-Current architecture, invariant and release decisions are consolidated in
+Current architecture and release summary: [3C.4K offline assurance](../webauthn-offline-assurance/BATCH_3C_4K_ASSURANCE.md). The historical architecture, invariant and release decisions remain in
 [BATCH_3C_4J_READINESS.md](BATCH_3C_4J_READINESS.md); the machine-readable
 policy is [experimental-readiness.json](experimental-readiness.json). The
 manifest is static and does not claim that tests or host diagnostics have run.

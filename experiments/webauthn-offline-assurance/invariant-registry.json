@@ -1,0 +1,266 @@
+{
+  "schemaVersion": 1,
+  "invariants": [
+    {
+      "id": "RP-ORIGIN-01",
+      "description": "Synthetic RP ID and origin remain the fixed test pair.",
+      "threat": "Caller-controlled origin/RP values being mistaken for trusted application identity.",
+      "domain": "synthetic-lifecycle",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/RecoveryJournal.cs",
+        "experiments/webauthn-windows-lab/ClientData.cs"
+      ],
+      "testReferences": [
+        "FixedOrigin"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Fixture validation does not prove a real browser origin or application identity.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "CRED-ID-01",
+      "description": "Credential identities are canonical, bounded and exact.",
+      "threat": "Credential aliasing, malformed IDs and unsafe cleanup targets.",
+      "domain": "synthetic-lifecycle",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/SyntheticInventory.cs",
+        "experiments/webauthn-windows-lab/LabWorkflow.cs"
+      ],
+      "testReferences": [
+        "RegistrationIdCollision",
+        "MalformedOrphanIdCannotBeDeleted",
+        "UnboundValidOrphanIdCannotBeDeleted"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "IDs and inventory are synthetic and do not establish OS credential identity.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "INVENTORY-01",
+      "description": "Ambiguous inventory changes cannot resolve unknown enrollment or authorize deletion.",
+      "threat": "Attributing a pre-existing or unexpected credential to an interrupted operation.",
+      "domain": "synthetic-lifecycle",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/SyntheticInventory.cs",
+        "experiments/webauthn-windows-lab/LabWorkflow.cs"
+      ],
+      "testReferences": [
+        "UnknownEnrollmentIdRemainsUntrusted",
+        "EnrollmentBaselineLossRemainsUnknown",
+        "CleanupRejectsUnexpectedInventoryIdentity"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "The fake inventory is not a real authenticator inventory.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "COLLISION-01",
+      "description": "Enrollment collisions and unbound IDs never become trusted or deletable credentials.",
+      "threat": "Deleting or pinning a pre-existing credential after a registration collision.",
+      "domain": "synthetic-lifecycle",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/LabWorkflow.cs",
+        "experiments/webauthn-windows-lab/FakeNativeWebAuthn.cs"
+      ],
+      "testReferences": [
+        "RegistrationIdCollision",
+        "DisappearingCollisionRemainsUnknown",
+        "CollisionInjectionPreservesExistingCredential"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Synthetic adapter provenance is not OS attestation.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "UNKNOWN-01",
+      "description": "Interrupted or unknown enrollment and cleanup outcomes remain blocked pending reconciliation.",
+      "threat": "Treating response loss, cancellation or unknown operation outcome as success.",
+      "domain": "synthetic-lifecycle",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/LabWorkflow.cs",
+        "experiments/webauthn-windows-lab/RecoveryJournal.cs"
+      ],
+      "testReferences": [
+        "UnknownEnrollment",
+        "CleanupOutcomeUnknown",
+        "CleanupCancellationUnknown",
+        "ReconciliationFailure"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Reconciliation uses only deterministic fake inventory.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "REVOKE-01",
+      "description": "Pinned synthetic trust is revoked before cleanup and stale results cannot restore it.",
+      "threat": "Using a credential after cleanup begins or after an ambiguous deletion.",
+      "domain": "synthetic-lifecycle",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/LabWorkflow.cs"
+      ],
+      "testReferences": [
+        "CleanupFailure",
+        "ConcurrentCleanupReconciliation",
+        "CleanupCancellationUnknown"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Revocation is in-memory fake state, not a persistent production revocation service.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "REVOKE-02",
+      "description": "Revocation is irreversible for the same synthetic credential lifecycle.",
+      "threat": "Stale journal or cleanup results restoring prior credential trust.",
+      "domain": "synthetic-lifecycle",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/LabWorkflow.cs",
+        "experiments/webauthn-windows-lab/RecoveryJournal.cs"
+      ],
+      "testReferences": [
+        "ConcurrentCleanupReconciliation",
+        "CleanupOutcomeUnknown",
+        "BoundedRecoverySequenceExploration"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "The simulation does not model durable multi-process authority state.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "JOURNAL-01",
+      "description": "Journal transitions are validated by both workflow journal and storage boundary.",
+      "threat": "Forged continuation or invalid operation/outcome transitions.",
+      "domain": "synthetic-recovery",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/RecoveryJournal.cs",
+        "experiments/webauthn-windows-lab/SyntheticJournalStore.cs"
+      ],
+      "testReferences": [
+        "JournalTransitionMatrix",
+        "StoreContinuationIsValidated",
+        "JournalRejectsInvalidTransitions",
+        "BoundedRecoverySequenceExploration"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Tests exercise an in-memory store simulation.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "REVISION-01",
+      "description": "Journal revisions and operation sequence continuity cannot regress.",
+      "threat": "Stale writes, duplicate operations and rollback snapshots.",
+      "domain": "synthetic-recovery",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/SyntheticJournalStore.cs"
+      ],
+      "testReferences": [
+        "StoreRejectsCorruption",
+        "JournalReconstructionUsesSharedStore"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "In-memory simulation is not durable or tamper resistant.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "REPLAY-01",
+      "description": "Lost or replaced replay ledger continuity blocks further nonce consumption.",
+      "threat": "Replaying a previously consumed synthetic challenge after ledger replacement.",
+      "domain": "synthetic-recovery",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/SyntheticJournalStore.cs"
+      ],
+      "testReferences": [
+        "StoreReplayContinuity",
+        "StoreReplacedLedgerBlocksConsumption",
+        "ReplayWithFreshJournal"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Does not provide replay protection across real OS process restarts.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "RESTORE-01",
+      "description": "Unanchored snapshots cannot fabricate later journal state.",
+      "threat": "Restoring a forged terminal snapshot without established history.",
+      "domain": "synthetic-recovery",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/SyntheticJournalStore.cs"
+      ],
+      "testReferences": [
+        "StoreRestoreRequiresValidGenesis",
+        "JournalReconstructionUsesSharedStore"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Genesis validation does not make the in-memory journal authenticated.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "TRUST-01",
+      "description": "Synthetic evidence dimensions must be complete, linked and fixture-sourced.",
+      "threat": "Caller metadata or contradictory fixture labels being treated as identity proof.",
+      "domain": "synthetic-trust",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/TrustBoundary.cs"
+      ],
+      "testReferences": [
+        "TrustBoundaryPositiveControl",
+        "TrustBoundaryRejectsMetadata",
+        "TrustBoundaryContradictions"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "Synthetic consistency is not application attestation or user approval.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "READY-01",
+      "description": "Readiness reports are informational and real operations remain blocked.",
+      "threat": "Unknown or synthetic readiness being promoted to real credential capability.",
+      "domain": "readiness-policy",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/TrustBoundary.cs",
+        "experiments/webauthn-windows-lab/experimental-readiness.json"
+      ],
+      "testReferences": [
+        "ReadinessIsInformational",
+        "ExperimentalManifest"
+      ],
+      "evidenceCategory": "synthetic-regression",
+      "limitations": "A static manifest is policy data and cannot establish runtime readiness.",
+      "status": "CODE_ENFORCED_TESTED"
+    },
+    {
+      "id": "NATIVE-01",
+      "description": "The synthetic lab exposes no live native credential operation.",
+      "threat": "Fake lab accidentally invoking a real WebAuthn ceremony or credential API.",
+      "domain": "component-boundary",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/FakeNativeWebAuthn.cs",
+        "experiments/webauthn-windows-lab/README.md"
+      ],
+      "testReferences": [
+        "FakeOwnership",
+        "RegistrationFailures"
+      ],
+      "evidenceCategory": "source-review",
+      "limitations": "Source boundary review is not a binary attestation or runtime sandbox.",
+      "status": "SOURCE_REVIEWED"
+    },
+    {
+      "id": "AUTH-01",
+      "description": "Experimental state cannot create production authorization or dispatch authority.",
+      "threat": "Synthetic trust, mock approval or readiness results reaching production dispatch.",
+      "domain": "component-boundary",
+      "enforcementLocations": [
+        "experiments/webauthn-windows-lab/WebAuthn.WindowsLab.csproj",
+        "experiments/webauthn-windows-lab/experimental-readiness.json",
+        "broker/README.md"
+      ],
+      "testReferences": [
+        "ReadinessIsInformational",
+        "ExperimentalManifest"
+      ],
+      "evidenceCategory": "source-review",
+      "limitations": "Offline verifier output is observational and not a production authorization input.",
+      "status": "SOURCE_REVIEWED"
+    }
+  ]
+}

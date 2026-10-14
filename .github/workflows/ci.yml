@@ -57,3 +57,10 @@ jobs:
 
       - name: Run WebAuthn Fake Lab tests
         run: dotnet run --no-build --no-restore --configuration Release --project .\experiments\webauthn-windows-lab\WebAuthn.WindowsLab.csproj
+
+
+      - name: Build offline assurance verifier
+        run: dotnet build .\experiments\webauthn-offline-assurance\WebAuthn.OfflineAssurance.csproj --configuration Release
+
+      - name: Validate offline policy, traceability, and adversarial fixtures
+        run: dotnet run --no-build --no-restore --configuration Release --project .\experiments\webauthn-offline-assurance\WebAuthn.OfflineAssurance.csproj -- --self-test .\experiments\webauthn-windows-lab\experimental-readiness.json .\experiments\webauthn-offline-assurance\invariant-registry.json .\experiments\webauthn-offline-assurance\fixtures .

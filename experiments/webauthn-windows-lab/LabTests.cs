@@ -63,6 +63,7 @@ internal static class LabTests
         ("cleanup reconciliation rejects unrecognized inventory identities", CleanupRejectsUnexpectedInventoryIdentity),
         ("malformed lost-response ID cannot become a deletion target", MalformedOrphanIdCannotBeDeleted),
         ("all journal transition pairs match an independent bounded model", JournalTransitionMatrix),
+        ("bounded reachable recovery sequences preserve revocation and transition invariants", BoundedRecoverySequenceExploration),
         ("unknown enrollment cannot become ready after losing a baseline ID", EnrollmentBaselineLossRemainsUnknown),
         ("disappearing collided identity cannot resolve ambiguous enrollment", DisappearingCollisionRemainsUnknown),
         ("malformed response identity stays blocked even with matching inventory", MalformedRecoveryIdentityRemainsUnknown),
@@ -1359,6 +1360,65 @@ internal static class LabTests
         return Task.CompletedTask;
     }
 
+    private static Task BoundedRecoverySequenceExploration()
+    {
+        const int maximumDepth = 8;
+        const int maximumCases = 6000;
+        var queue = new Queue<(RecoveryOperation Operation, LabState State,
+            RecoveryOutcome Outcome, bool Revoked, int Depth, string Trace)>();
+        queue.Enqueue((RecoveryOperation.None, LabState.Ready, RecoveryOutcome.NotStarted,
+            false, 0, "genesis"));
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var operations = Enum.GetValues<RecoveryOperation>().Where(x => x != RecoveryOperation.None).ToArray();
+        var states = Enum.GetValues<LabState>();
+        var outcomes = Enum.GetValues<RecoveryOutcome>();
+        var explored = 0;
+        while (queue.Count > 0)
+        {
+            var node = queue.Dequeue();
+            var key = $"{node.Operation}|{node.State}|{node.Outcome}|{node.Revoked}|{node.Depth}";
+            if (!visited.Add(key)) continue;
+            if (++explored > maximumCases)
+                throw new InvalidOperationException($"Explorer case cap exceeded at {node.Trace}.");
+            if (node.Revoked && node.State == LabState.CredentialPinnedInMemory)
+                throw new InvalidOperationException($"Revoked credential regained trust: {node.Trace}.");
+            if (node.Depth == maximumDepth) continue;
+
+            foreach (var operation in operations)
+            foreach (var next in states)
+            {
+                var expected = ReferenceCanBegin(operation, node.State, next);
+                var actual = RecoveryJournal.CanBegin(operation, node.State, next);
+                if (actual != expected)
+                    throw new InvalidOperationException($"Shortest failing sequence: {node.Trace} -> Begin({operation},{next}).");
+                if (!actual) continue;
+                var revoked = node.Revoked;
+                if (operation == RecoveryOperation.Enrollment && node.State == LabState.Ready)
+                    revoked = false; // A new enrollment is a new synthetic credential lifecycle.
+                if (operation == RecoveryOperation.Cleanup &&
+                    node.State is LabState.CredentialPinnedInMemory or LabState.AssertionContractMatched)
+                    revoked = true;
+                queue.Enqueue((operation, next, RecoveryOutcome.Started, revoked,
+                    node.Depth + 1, $"{node.Trace} -> Begin({operation},{next})"));
+            }
+
+            if (node.Operation == RecoveryOperation.None) continue;
+            foreach (var next in states)
+            foreach (var outcome in outcomes)
+            {
+                var expected = ReferenceCanRecord(node.Operation, node.State, node.Outcome, next, outcome);
+                var actual = RecoveryJournal.CanRecord(node.Operation, node.State, node.Outcome, next, outcome);
+                if (actual != expected)
+                    throw new InvalidOperationException($"Shortest failing sequence: {node.Trace} -> Record({next},{outcome}).");
+                if (!actual) continue;
+                var revoked = node.Revoked || node.Operation == RecoveryOperation.Cleanup;
+                queue.Enqueue((node.Operation, next, outcome, revoked, node.Depth + 1,
+                    $"{node.Trace} -> Record({next},{outcome})"));
+            }
+        }
+        True(explored > 100, "Bounded explorer must cover reachable multi-step sequences.");
+        return Task.CompletedTask;
+    }
     private static bool ReferenceCanBegin(
         RecoveryOperation operation, LabState prior, LabState next)
     {

@@ -58,10 +58,11 @@ The snapshots use Windows x64 pointer width, default sequential alignment,
 layout suite as x64. Layout results from this project do not establish that
 the installed runtime accepts those structures or versions.
 
-The host has `webauthn.dll` file version `10.0.22621.5624`; this shell does
-not load it or query `WebAuthNGetApiVersionNumber`. Runtime API version,
-export availability, and compatibility with the newer SDK header remain
-unverified.
+A historical host note recorded `webauthn.dll` file version `10.0.22621.5624`.
+This is not a fresh observation or a universal capability claim. This shell
+does not load the DLL or query `WebAuthNGetApiVersionNumber`; current runtime
+API version, export availability, and compatibility with the newer SDK header
+remain unverified.
 
 ## Test-only RP and origin
 
@@ -147,7 +148,16 @@ claimed based only on a local registry entry being removed.
 
 ## Readiness
 
-**READY** for compiling and running this fake-only shell after review.
+Current architecture, invariant and release decisions are consolidated in
+[BATCH_3C_4J_READINESS.md](BATCH_3C_4J_READINESS.md); the machine-readable
+policy is [experimental-readiness.json](experimental-readiness.json). The
+manifest is static and does not claim that tests or host diagnostics have run.
+
+Historical evidence: [3C.4G](BATCH_3C_4G_DEF_READINESS.md), [3C.4H](BATCH_3C_4H_READINESS.md), and [3C.4I](BATCH_3C_4I_ASSURANCE.md).
+
+## Historical readiness
+
+**CONDITIONAL GO** for synthetic-only use after required build and regression checks pass for the exact patch.
 **BLOCKED** for any real Windows Hello test until a later phase explicitly
 authorizes credential creation and addresses runtime API version, trusted
 test enrollment, recovery after interruption, authenticator selection,

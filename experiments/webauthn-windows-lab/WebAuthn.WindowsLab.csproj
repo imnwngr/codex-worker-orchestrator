@@ -8,4 +8,7 @@
     <RootNamespace>WebAuthn.WindowsLab</RootNamespace>
     <AssemblyName>WebAuthn.WindowsLab</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="experimental-readiness.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

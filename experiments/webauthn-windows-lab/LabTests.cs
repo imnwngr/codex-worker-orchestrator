@@ -9,6 +9,7 @@ internal static class LabTests
 {
     private static readonly List<(string Name, Func<Task> Run)> Tests =
     [
+        ("experimental manifest enforces synthetic-only readiness", ExperimentalManifest),
         ("x64 native structure sizes, offsets, and pointer width", AbiLayouts),
         ("header API versions select only their mapped structure versions", ApiVersions),
         ("WINAPI metadata and HRESULT interpretation are exact", CallingConventionAndHResult),
@@ -88,6 +89,89 @@ internal static class LabTests
             }
         }
         return failures;
+    }
+
+    private static Task ExperimentalManifest()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "experimental-readiness.json");
+        using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+        var root = document.RootElement;
+        ManifestRejectDuplicateProperties(root);
+
+        Equal(1, root.GetProperty("manifestSchemaVersion").GetInt32(), "Manifest schema version.");
+        Equal("EXPERIMENTAL_SYNTHETIC_ONLY", root.GetProperty("designation").GetString(),
+            "Only the synthetic experimental designation is accepted.");
+        var scope = root.GetProperty("securityScope");
+        Equal("IN_MEMORY_FAKE_ONLY", scope.GetProperty("syntheticCredentialLifecycle").GetString(),
+            "Credential lifecycle must remain fake and in memory.");
+        Equal("READ_ONLY_RUNTIME_CAPABILITY_QUERIES_ONLY", scope.GetProperty("hostDiagnostics").GetString(),
+            "Host diagnostics must remain read-only.");
+        Equal("DEFAULT_DENY", scope.GetProperty("productionAuthorization").GetString(),
+            "Production authorization remains default-deny.");
+        Equal("USER_ONLY", scope.GetProperty("userApprovalAuthority").GetString(),
+            "USER remains the sole approval authority.");
+
+        ManifestRequireExactSet(root.GetProperty("requiredTestGroups"), "Required tests",
+            "approval-agent-mock", "webauthn-fake-lab", "node-regression");
+        ManifestRequireExactSet(root.GetProperty("expectedCiJobCategories"), "CI categories",
+            "windows-node-22", "windows-node-24", "ubuntu-node-22", "ubuntu-node-24", "windows-dotnet-8");
+        var prohibited = root.GetProperty("prohibitedCapabilities");
+        var prohibitedValues = prohibited.EnumerateArray().Select(item => item.GetString()).ToArray();
+        Equal(prohibitedValues.Length, prohibitedValues.ToHashSet(StringComparer.Ordinal).Count,
+            "Prohibited capabilities must not contain duplicates.");
+        foreach (var capability in new[] {
+            "real-webauthn-enrollment", "real-webauthn-assertion",
+            "real-credential-enumeration", "real-credential-deletion",
+            "production-dispatch-from-lab", "mock-approval-grant-minting",
+            "credential-material-persistence" })
+            True(prohibitedValues.Contains(capability, StringComparer.Ordinal),
+                $"Manifest must prohibit {capability}.");
+
+        var gates = root.GetProperty("readinessGates");
+        foreach (var gate in new[] {
+            "realCredentialEnrollment", "realCredentialAssertion",
+            "realCredentialEnumeration", "realCredentialDeletion", "productionAuthorization" })
+            Equal("NO_GO", gates.GetProperty(gate).GetString(), $"{gate} must remain NO_GO.");
+        Equal("VERIFY_IN_CI", gates.GetProperty("syntheticRegressionIntegration").GetString(),
+            "A static manifest must not claim that regression tests have passed.");
+        Equal("NOT_OBSERVED_BY_STATIC_MANIFEST", gates.GetProperty("readOnlyRuntimeDiagnostics").GetString(),
+            "Static policy must not claim observed host diagnostics.");
+        Equal("NOT_OBSERVED_BY_CI", gates.GetProperty("wpfMockDemonstration").GetString(),
+            "Build and mock tests must not be represented as a GUI demonstration.");
+        foreach (var gate in new[] {
+            "applicationIdentity", "replayProtectionAcrossOsRestarts", "syncedPasskeysAndExternalAuthenticators" })
+            Equal("UNVERIFIED", gates.GetProperty(gate).GetString(), $"{gate} remains unverified.");
+        True(root.GetProperty("outstandingVerificationGates").GetArrayLength() > 0,
+            "Unresolved verification gates must be recorded.");
+        return Task.CompletedTask;
+    }
+
+    private static void ManifestRequireExactSet(JsonElement array, string label, params string[] expected)
+    {
+        var values = array.EnumerateArray().Select(item => item.GetString()).ToArray();
+        Equal(expected.Length, values.Length, $"{label} must contain the expected number of entries.");
+        var actual = values.ToHashSet(StringComparer.Ordinal);
+        Equal(values.Length, actual.Count, $"{label} must not contain duplicate entries.");
+        foreach (var value in expected)
+            True(actual.Contains(value), $"{label} missing required entry: {value}.");
+    }
+
+    private static void ManifestRejectDuplicateProperties(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var property in element.EnumerateObject())
+            {
+                True(names.Add(property.Name), $"Duplicate manifest property: {property.Name}.");
+                ManifestRejectDuplicateProperties(property.Value);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+                ManifestRejectDuplicateProperties(item);
+        }
     }
 
     private static Task AbiLayouts()

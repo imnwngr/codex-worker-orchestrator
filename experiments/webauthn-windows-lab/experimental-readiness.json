@@ -1,0 +1,49 @@
+{
+  "manifestSchemaVersion": 1,
+  "designation": "EXPERIMENTAL_SYNTHETIC_ONLY",
+  "securityScope": {
+    "syntheticCredentialLifecycle": "IN_MEMORY_FAKE_ONLY",
+    "hostDiagnostics": "READ_ONLY_RUNTIME_CAPABILITY_QUERIES_ONLY",
+    "productionAuthorization": "DEFAULT_DENY",
+    "userApprovalAuthority": "USER_ONLY"
+  },
+  "requiredTestGroups": [
+    "approval-agent-mock",
+    "webauthn-fake-lab",
+    "node-regression"
+  ],
+  "expectedCiJobCategories": [
+    "windows-node-22",
+    "windows-node-24",
+    "ubuntu-node-22",
+    "ubuntu-node-24",
+    "windows-dotnet-8"
+  ],
+  "prohibitedCapabilities": [
+    "real-webauthn-enrollment",
+    "real-webauthn-assertion",
+    "real-credential-enumeration",
+    "real-credential-deletion",
+    "production-dispatch-from-lab",
+    "mock-approval-grant-minting",
+    "credential-material-persistence"
+  ],
+  "readinessGates": {
+    "syntheticRegressionIntegration": "VERIFY_IN_CI",
+    "readOnlyRuntimeDiagnostics": "NOT_OBSERVED_BY_STATIC_MANIFEST",
+    "wpfMockDemonstration": "NOT_OBSERVED_BY_CI",
+    "realCredentialEnrollment": "NO_GO",
+    "realCredentialAssertion": "NO_GO",
+    "realCredentialEnumeration": "NO_GO",
+    "realCredentialDeletion": "NO_GO",
+    "applicationIdentity": "UNVERIFIED",
+    "replayProtectionAcrossOsRestarts": "UNVERIFIED",
+    "syncedPasskeysAndExternalAuthenticators": "UNVERIFIED",
+    "productionAuthorization": "NO_GO"
+  },
+  "outstandingVerificationGates": [
+    "Run required CI and local regression groups on the proposed patch.",
+    "Perform any host capability observation separately and label it with its timestamp and machine context.",
+    "Keep all real credential operations and production authorization disabled pending separate security review and explicit authorization."
+  ]
+}

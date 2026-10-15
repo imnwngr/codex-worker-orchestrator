@@ -140,3 +140,15 @@ test("unknown route remains a 404", async t => {
   assert.equal(response.status, 404);
   assert.deepEqual(await response.json(), { ok: false, error: "not_found" });
 });
+
+test("legacy JSON null returns invalid_task without dispatch and the server remains usable", async t => {
+  const { adapter, calls } = responseAdapter();
+  const base = await withServer(t, { adapter, logger: { log() {}, error() {} } });
+  const invalid = await fetch(`${base}/v1/analyze`, { method: "POST", body: "null" });
+  assert.equal(invalid.status, 400);
+  assert.deepEqual(await invalid.json(), { ok: false, error: "invalid_task" });
+  assert.equal(calls.length, 0);
+  const valid = await fetch(`${base}/v1/analyze`, { method: "POST", body: JSON.stringify({ task: "still usable" }) });
+  assert.equal(valid.status, 200);
+  assert.equal(calls.length, 1);
+});

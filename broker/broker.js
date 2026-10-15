@@ -105,6 +105,7 @@ function createBrokerServer(options = {}) {
     }
 
     if (
+      body === null ||
       typeof body.task !== "string" ||
       !body.task.trim() ||
       body.task.length > 50000

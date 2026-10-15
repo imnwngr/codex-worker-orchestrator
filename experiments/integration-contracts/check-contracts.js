@@ -134,7 +134,7 @@ function check(value, definition, now) {
         if (ids.has(item.request.requestId)) reject("DUPLICATE_REQUEST_ID");
         ids.add(item.request.requestId); scenario(item, now);
       }
-    } else cancellation(value);
+    } else if (definition === "cancellation") cancellation(value);
     return Object.freeze({ schemaVersion: 1, contractStatus: "CONSISTENT_NON_AUTHORIZING", errorCategory: null, authorized: false, productionAuthorization: "DEFAULT_DENY" });
   } catch (error) {
     const allowed = new Set(["DUPLICATE_REQUEST_ID", "INPUT_BOUND_EXCEEDED", "INVALID_TEXT_ENCODING", "NON_JSON_INPUT", "UNSUPPORTED_SCHEMA_KEYWORD", "UNSUPPORTED_SCHEMA_REFERENCE", "UNSUPPORTED_VERSION", "SCHEMA_INVALID", "REQUIRED_FIELD_MISSING", "UNKNOWN_FIELD", "UNCERTAIN_OUTCOME_CONFLICT", "INVALID_CLOCK", "NON_SYNTHETIC_DESTINATION", "TIME_BINDING_INVALID", "DUPLICATE_TARGET_ID", "TARGET_NOT_CONFIGURED", "AMBIGUOUS_ACTION_IDENTITY", "TASK_IDENTITY_MISMATCH", "BATCH_IDENTITY_MISMATCH", "DISPLAY_CONTEXT_MISMATCH", "APPROVAL_BINDING_MISMATCH", "DUPLICATE_APPROVAL_IDENTITY", "INVALID_NONCE_ENCODING", "REQUEST_ID_MISMATCH", "CONTEXT_BINDING_MISMATCH", "INVALID_STATE_TRANSITION", "EXPIRED_DECISION", "AUDIT_BINDING_MISMATCH", "CONFLICTING_CONTRACT_STATUS"]);
@@ -145,5 +145,7 @@ function check(value, definition, now) {
 module.exports = {
   checkScenario: (value, now) => check(value, "scenario", now),
   checkScenarioCollection: (value, now) => check(value, "scenarioCollection", now),
-  checkCancellation: value => check(value, "cancellation")
+  checkCancellation: value => check(value, "cancellation"),
+  checkRequest: value => check(value, "request"),
+  snapshotJson(value) { boundedJson(value); return JSON.parse(canonicalJson(value)); }
 };

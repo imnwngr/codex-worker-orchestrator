@@ -70,3 +70,17 @@ Closing the application discards the mock outcome.
 Do not use this prototype to authorize external transmission. Real credential
 enrollment, protected IPC, application integrity, durable replay protection,
 and independent security review remain future work.
+
+## UI / UX design (Hallmark)
+
+The WPF mock now uses a native desktop review-desk layout: the synthetic-only
+warning and local decision status are always visible, complete task text has
+priority over diagnostic output, and read-only diagnostics are behind an
+expandable disclosure. Keyboard access keys, the Escape-to-reject behavior,
+read-only text fields and original mock state transitions are unchanged.
+
+The documented design rationale, accessibility review and Windows manual
+acceptance checklist are in [`UX_DESIGN.md`](UX_DESIGN.md). The layout is
+informed by Hallmark's design rules adapted to WPF; this is not a browser
+implementation. No fonts, third-party packages, credentials, endpoints or
+production dispatch capabilities were added.

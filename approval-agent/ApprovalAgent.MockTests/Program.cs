@@ -32,7 +32,11 @@ var tests = new (string Name, Action Run)[]
     ("reports unexpected diagnostic failures safely", ViewModelReportFailure),
     ("inconsistent native diagnostic combinations fail closed", InconsistentNativeReport),
     ("unknown and unsupported runtime states remain blocked", UnknownDiagnosticVersionGates),
-    ("WPF structured report uses non-writing binding", ReadOnlyWpfBindingContract)
+    ("WPF structured report uses non-writing binding", ReadOnlyWpfBindingContract),
+    ("Hallmark review preserves the exact read-only task and warnings", ReviewSurfaceContract),
+    ("Hallmark decision bar preserves mock-only commands and expiry gating", ReviewDecisionContract),
+    ("Hallmark diagnostics remain optional and strictly read-only", ReviewDiagnosticsContract),
+    ("Hallmark controls preserve keyboard focus and hit-target sizing", ReviewAccessibilityContract)
 };
 
 var failures = 0;
@@ -457,6 +461,120 @@ static void ReadOnlyWpfBindingContract()
     var property = typeof(WebAuthnDiagnosticsViewModel).GetProperty("StructuredReportJson");
     True(property is not null && property.GetSetMethod() is null,
         "ViewModel should not expose a public report setter.");
+}
+
+// These headless layout-contract tests complement the Windows WPF build; they
+// do not substitute for visual, high-contrast, DPI or accessibility testing.
+static XDocument LoadReviewWindow() => XDocument.Load(
+    Path.Combine(AppContext.BaseDirectory, "Fixtures", "MainWindow.xaml"));
+
+static void ReviewSurfaceContract()
+{
+    var window = LoadReviewWindow();
+    var ns = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    var texts = window.Descendants(ns + "TextBlock").ToArray();
+    True(texts.Any(x => ((string?)x.Attribute("Text"))?.Contains(
+        "MOCK PROTOTYPE — NO REAL APPROVAL OR DISPATCH", StringComparison.Ordinal) == true),
+        "The exact mock-only safety label must be visible in the review content.");
+    True(texts.Any(x => ((string?)x.Attribute("Text"))?.Contains(
+        "LOCAL MOCK · NO DISPATCH", StringComparison.Ordinal) == true),
+        "Persistent window header must explicitly identify the simulation.");
+    True(texts.Any(x => ((string?)x.Attribute("Text"))?.Contains(
+        "ExternalTransmissionWarning", StringComparison.Ordinal) == true),
+        "The full warning must be bound to the original view model.");
+    True(texts.Any(x => ((string?)x.Attribute("Text"))?.Contains(
+        "reserved .invalid domain", StringComparison.Ordinal) == true),
+        "The synthetic destination notice must not be removed.");
+
+    var taskBoxes = window.Descendants(ns + "TextBox")
+        .Where(x => ((string?)x.Attribute("Text"))?.Contains(
+            "Proposal.Task", StringComparison.Ordinal) == true).ToArray();
+    Equal(1, taskBoxes.Length, "There must be exactly one complete-task textbox.");
+    Equal("True", (string?)taskBoxes[0].Attribute("IsReadOnly"),
+        "The exact task text must remain read-only.");
+    True(((string?)taskBoxes[0].Attribute("Text"))?.Contains(
+        "Mode=OneWay", StringComparison.Ordinal) == true,
+        "The task binding must not mutate its proposal.");
+    True(texts.Any(x => ((string?)x.Attribute("Text"))?.Contains(
+        "Proposal.TaskSha256", StringComparison.Ordinal) == true),
+        "The exact task hash must remain visible.");
+}
+
+static void ReviewDecisionContract()
+{
+    var window = LoadReviewWindow();
+    var ns = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    var buttons = window.Descendants(ns + "Button").ToArray();
+    Equal(2, buttons.Length, "Only Reject and Approve Mock should be actionable.");
+    var approve = buttons.Single(b => (string?)b.Attribute("Click") == "ApproveMock_Click");
+    var reject = buttons.Single(b => (string?)b.Attribute("Click") == "Reject_Click");
+    Equal("{Binding CanApprove}", (string?)approve.Attribute("IsEnabled"),
+        "Mock approval remains controlled by the view-model expiry and state.");
+    Equal("{Binding CanReject}", (string?)reject.Attribute("IsEnabled"),
+        "Mock rejection remains controlled by the view-model state.");
+    True(((string?)approve.Attribute("Content"))?.Contains("Mock", StringComparison.Ordinal) == true,
+        "The primary action must not be mistaken for a real approval.");
+    Equal("Approve mock proposal only", (string?)approve.Attribute("AutomationProperties.Name"),
+        "Approval must have an explicit screen-reader identity.");
+
+    var content = window.Root!.Element(ns + "Grid")!;
+    var footer = content.Elements(ns + "Border").Single(x =>
+        (string?)x.Attribute("Grid.Row") == "2");
+    True(footer.Descendants(ns + "Button").Count() == 2,
+        "Both actions must stay in the fixed footer rather than scrolling away.");
+    True(footer.Descendants(ns + "TextBlock").Any(x =>
+        ((string?)x.Attribute("Text"))?.Contains("StatusMessage", StringComparison.Ordinal) == true),
+        "The live mock outcome must remain visible alongside the actions.");
+    Equal("Window_KeyDown", (string?)window.Root.Attribute("KeyDown"),
+        "The original Escape-to-reject keyboard behavior must be retained.");
+}
+
+static void ReviewDiagnosticsContract()
+{
+    var window = LoadReviewWindow();
+    var ns = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    var xns = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml";
+    var section = window.Descendants(ns + "Border").Single(x =>
+        (string?)x.Attribute(xns + "Name") == "WebAuthnDiagnosticsSection");
+    var disclosure = section.Descendants(ns + "Expander").Single();
+    Equal("False", (string?)disclosure.Attribute("IsExpanded"),
+        "Read-only diagnostics should start collapsed, after the task content.");
+    Equal("Window_Loaded", (string?)window.Root!.Attribute("Loaded"),
+        "Read-only diagnostics should retain the existing loaded handler.");
+    var report = disclosure.Descendants(ns + "TextBox").Single(x =>
+        ((string?)x.Attribute("Text"))?.Contains("StructuredReportJson", StringComparison.Ordinal) == true);
+    Equal("True", (string?)report.Attribute("IsReadOnly"),
+        "Diagnostics must not be editable.");
+    True(((string?)report.Attribute("Text"))?.Contains("Mode=OneWay", StringComparison.Ordinal) == true,
+        "Structured report must preserve its non-writing binding.");
+    True(disclosure.Descendants(ns + "TextBlock").Any(x =>
+        ((string?)x.Attribute("Text"))?.Contains("does not prove Windows Hello enrollment",
+            StringComparison.Ordinal) == true),
+        "Capability limitations must remain visible when diagnostics are expanded.");
+}
+
+static void ReviewAccessibilityContract()
+{
+    var window = LoadReviewWindow();
+    var ns = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    var xns = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml";
+    var styles = window.Descendants(ns + "Style").ToArray();
+    var action = styles.Single(x => (string?)x.Attribute(xns + "Key") == "ActionButton");
+    True(action.Descendants(ns + "Setter").Any(x =>
+        (string?)x.Attribute("Property") == "Height" &&
+        int.TryParse((string?)x.Attribute("Value"), out var height) && height >= 44),
+        "Action hit targets must be at least 44 WPF device-independent units tall.");
+    True(action.Descendants(ns + "Setter").Any(x =>
+        (string?)x.Attribute("Property") == "FocusVisualStyle"),
+        "Keyboard focus must have a visible ring.");
+    var footerStatus = window.Descendants(ns + "TextBlock").Single(x =>
+        (string?)x.Attribute("AutomationProperties.Name") == "Mock decision status");
+    Equal("Polite", (string?)footerStatus.Attribute("AutomationProperties.LiveSetting"),
+        "Screen readers should be notified of completed/rejected/expired state.");
+    True(action.Descendants(ns + "Trigger").Any(x =>
+        (string?)x.Attribute("Property") == "IsEnabled" &&
+        (string?)x.Attribute("Value") == "False"),
+        "Disabled actions must have a distinct visual state.");
 }
 
 static ApprovalProposal Proposal(

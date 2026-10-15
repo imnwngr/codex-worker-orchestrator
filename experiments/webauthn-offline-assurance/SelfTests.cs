@@ -138,6 +138,7 @@ internal static class OfflineAssuranceSelfTests
             }),
             ("oversized assurance input is rejected with stable category", () => RejectManifest(new string(' ', StrictJson.MaximumBytes + 1), "INPUT_OVERSIZED"))
         };
+        cases = cases.Concat(PhaseLSelfTests.Cases(manifest, registry, repoRoot)).ToArray();
         foreach (var (name, test) in cases)
         {
             try { test(); }

@@ -75,7 +75,16 @@ internal sealed record Inv(string Id,string Status,string Category,string[] Loca
 internal sealed record E(string Id,string Category,string Origin,string? Revision,string? Group,string Result,string? Timestamp,string Digest,string[] Assumptions);
 public sealed record VerificationResult(int ExitCode,string Json);
 internal sealed record GroupReport(string TestGroup,string Status,string VerificationStatus);
-internal sealed record EvidenceReport(string EvidenceId,string Category,string Origin,string? SourceRevision,string? TestGroup,string ReportedResult,string? ObservationTimestampUtc,string InputSha256,string IntegrityStatus,string[] Assumptions);
+internal sealed record EvidenceReport(string EvidenceId,string Category,string Origin,string? SourceRevision,string? TestGroup,string ReportedResult,string? ObservationTimestampUtc,string InputSha256,string IntegrityStatus,string[] Assumptions)
+{
+    public string SourceClassification => Origin switch {
+        "fixed-test-fixture" => "SYNTHETIC_FIXTURE_NOT_EXECUTION",
+        "self-reported" => "SELF_REPORTED_UNVERIFIED",
+        "locally-reported" => "LOCAL_EXECUTION_REPORTED_UNVERIFIED",
+        "ci-reported-unverified" => "CI_EXECUTION_REPORTED_PROVENANCE_UNVERIFIED",
+        "user-supplied-historical" => "HISTORICAL_OBSERVATION_UNVERIFIED",
+        _ => throw new AssuranceInputException("EVIDENCE_ORIGIN_INVALID") };
+}
 internal sealed record InvariantReport(string InvariantId,string RegistryStatus,string EvidenceCategory,string[] TestReferences,string Limitations,string VerificationStatus);
 internal sealed record ReportModel(int ReportSchemaVersion,int ManifestSchemaVersion,int InvariantRegistrySchemaVersion,string UserSuppliedExpectedSourceRevision,string[] Classifications,InvariantReport[] Invariants,GroupReport[] TestGroups,EvidenceReport[] Evidence,string[] MissingOrUnverifiedEvidence,string RuntimeObservation,string ProvenanceLimitations,string ReadOnlyRuntimeReadiness,string RealCredentialOperations,string ProductionAuthorization,string FinalSyntheticAssuranceStatus,bool IndependentlyCertified);
 
@@ -109,21 +118,23 @@ public static class AssuranceVerifier
             foreach(var item in ev) { if(item.Revision is null) issues.Add("evidence_source_revision_missing"); else if(expectedRevision is not null&&item.Revision!=expectedRevision) issues.Add("evidence_source_revision_unmatched"); }
             var tests=m.Groups.Select(g=>{
                 var group=ev.Where(x=>x.Category=="test-run-summary"&&x.Group==g).ToArray();
-                var hasReportedPass=group.Any(x=>x.Origin=="self-reported"&&x.Result=="PASS");
+                var hasReportedPass=group.Any(x=>(x.Origin is "self-reported" or "locally-reported" or "ci-reported-unverified") && x.Result=="PASS");
                 var fixtureOnly=group.Length>0&&group.All(x=>x.Origin=="fixed-test-fixture");
                 var pass=hasReportedPass&&group.All(x=>x.Result=="PASS");
                 if(!pass) issues.Add(group.Any(x=>x.Result=="FAIL")?"required_test_group_reported_failure":
                     fixtureOnly?"required_test_group_fixture_only":"required_test_group_missing_or_unknown");
                 return new GroupReport(g,pass?"PASS_REPORTED":fixtureOnly?"FIXTURE_ONLY":
                     group.Length==0?"MISSING":"FAIL_OR_UNKNOWN",
-                    fixtureOnly?"FIXTURE_NOT_EXECUTION_EVIDENCE":"SELF_REPORTED_UNVERIFIED");
+                    fixtureOnly?"FIXTURE_NOT_EXECUTION_EVIDENCE":
+                    group.Length>0&&group.All(x=>x.Origin=="locally-reported")?"LOCAL_EXECUTION_REPORTED_UNVERIFIED":
+                    group.Length>0&&group.All(x=>x.Origin=="ci-reported-unverified")?"CI_EXECUTION_REPORTED_PROVENANCE_UNVERIFIED":"SELF_REPORTED_UNVERIFIED");
             }).ToArray();
             var complete=issues.Count==0;
             var runtimeReported=ev.Any(x=>x.Category=="historical-readonly-observation");
             var classifications=new List<string>{"SYNTHETIC_POLICY_VALIDATED",complete?"SYNTHETIC_REGRESSION_REPORTED":"SYNTHETIC_EVIDENCE_INCOMPLETE"};
             if(runtimeReported) classifications.Add("READ_ONLY_RUNTIME_HISTORICAL_REPORT_UNVERIFIED");
             classifications.AddRange(["READ_ONLY_RUNTIME_UNOBSERVED","REAL_CREDENTIAL_OPERATIONS_BLOCKED","PRODUCTION_AUTHORIZATION_BLOCKED"]);
-            var report=new ReportModel(1,1,1,expectedRevision??"NOT_SUPPLIED",classifications.ToArray(),
+            var report=new ReportModel(2,1,1,expectedRevision??"NOT_SUPPLIED",classifications.ToArray(),
                 invariants.Select(i=>new InvariantReport(i.Id,i.Status,i.Category,i.Tests,i.Limitations,i.Status=="CODE_ENFORCED_TESTED"?"TEST_REFERENCES_REPORTED_NOT_EXECUTED_HERE":"SOURCE_REVIEW_OR_DOCUMENTATION_ONLY")).ToArray(),
                 tests,ev.Select(x=>new EvidenceReport(x.Id,x.Category,x.Origin,x.Revision,x.Group,x.Result,x.Timestamp,x.Digest,"DIGEST_MATCHES_SUPPLIED_PAYLOAD; PRODUCER_UNAUTHENTICATED",x.Assumptions)).ToArray(),issues.ToArray(),
                 runtimeReported?"REPORTED_UNVERIFIED_USER_SUPPLIED":"NOT_SUPPLIED",
@@ -166,7 +177,8 @@ public static class AssuranceVerifier
             var status=Contract.S(x,"status",32); if(status is not("CODE_ENFORCED_TESTED" or "SOURCE_REVIEWED" or "DOCUMENTATION_ONLY" or "INCOMPLETE")) throw new AssuranceInputException("INVARIANT_STATUS_UNKNOWN");
             var category=Contract.S(x,"evidenceCategory",64); if(category is not("synthetic-regression" or "source-review" or "documentation-only")) throw new AssuranceInputException("INVARIANT_EVIDENCE_CATEGORY_INVALID");
             if(!ExpectedInvariantStatus.TryGetValue(id,out var expectedStatus)||status!=expectedStatus||ExpectedInvariantCategory[id]!=category) throw new AssuranceInputException("INVARIANT_ASSURANCE_CLASSIFICATION_INVALID");
-            _=Contract.S(x,"description"); _=Contract.S(x,"threat"); _=Contract.S(x,"domain",64);
+            _=Contract.S(x,"description"); _=Contract.S(x,"threat");
+            if(!TraceContract.DomainMatches(id,Contract.S(x,"domain",64))) throw new AssuranceInputException("INVARIANT_METADATA_CONTRADICTION");
             list.Add(new(id,status,category,locations,tests,Contract.S(x,"limitations")));
         }
         Contract.Exact(ids,InvariantIds); return list.OrderBy(i=>i.Id,StringComparer.Ordinal).ToArray();
@@ -182,11 +194,11 @@ public static class AssuranceVerifier
             Contract.Obj(x,"evidenceId","category","origin","sourceRevision","testGroup","reportedResult","observationTimestampUtc","inputSha256","assumptions","payload");
             var id=Contract.S(x,"evidenceId",80); if(!ids.Add(id)) throw new AssuranceInputException("EVIDENCE_ID_DUPLICATE");
             var cat=Contract.S(x,"category",64); if(cat is not("test-run-summary" or "historical-readonly-observation")) throw new AssuranceInputException("EVIDENCE_CATEGORY_INVALID");
-            var origin=Contract.S(x,"origin",64); if(origin is not("self-reported" or "fixed-test-fixture" or "user-supplied-historical")) throw new AssuranceInputException("EVIDENCE_ORIGIN_INVALID");
+            var origin=Contract.S(x,"origin",64); if(origin is not("self-reported" or "fixed-test-fixture" or "user-supplied-historical" or "locally-reported" or "ci-reported-unverified")) throw new AssuranceInputException("EVIDENCE_ORIGIN_INVALID");
             var rev=Contract.NS(x,"sourceRevision",64); Contract.Revision(rev); if(rev is not null) revs.Add(rev);
             var group=Contract.NS(x,"testGroup",64); var result=Contract.S(x,"reportedResult",16);
             if(cat=="test-run-summary") {
-                if(origin is not("self-reported" or "fixed-test-fixture")) throw new AssuranceInputException("EVIDENCE_ORIGIN_CATEGORY_MISMATCH");
+                if(origin is not("self-reported" or "fixed-test-fixture" or "locally-reported" or "ci-reported-unverified")) throw new AssuranceInputException("EVIDENCE_ORIGIN_CATEGORY_MISMATCH");
                 if(group is not("approval-agent-mock" or "webauthn-fake-lab" or "node-regression")||result is not("PASS" or "FAIL" or "UNKNOWN")) throw new AssuranceInputException("EVIDENCE_ENUM_INVALID");
             }
             else {
@@ -203,7 +215,10 @@ public static class AssuranceVerifier
             var actual=Convert.ToHexString(SHA256.HashData(CanonicalJson.Bytes(payload))).ToLowerInvariant(); if(actual!=digest) throw new AssuranceInputException("EVIDENCE_DIGEST_MISMATCH");
             list.Add(new(id,cat,origin,rev,group,result,time,digest,assumptions));
         }
-        if(revs.Count>1) throw new AssuranceInputException("EVIDENCE_SOURCE_CONFLICT"); return list.OrderBy(x=>x.Id,StringComparer.Ordinal).ToArray();
+        if(revs.Count>1) throw new AssuranceInputException("EVIDENCE_SOURCE_CONFLICT");
+        if(list.Where(x=>x.Category=="test-run-summary").GroupBy(x=>x.Group).Any(g=>g.Select(x=>x.Result).Distinct(StringComparer.Ordinal).Count()>1))
+            throw new AssuranceInputException("EVIDENCE_RESULT_CONFLICT");
+        return list.OrderBy(x=>x.Id,StringComparer.Ordinal).ToArray();
     }
     internal static string? TraceError(string registryJson,string repoRoot)
     {
@@ -213,10 +228,13 @@ public static class AssuranceVerifier
             var root=Path.GetFullPath(repoRoot);
             foreach(var item in items) foreach(var rel in item.Locations)
             {
-                if(Path.IsPathRooted(rel)||rel.Split('/', '\\').Any(x=>x=="..")) return "INVARIANT_SOURCE_PATH_INVALID";
+                if(Path.IsPathRooted(rel)||rel.Contains(':')||rel.Contains('\\')||rel.Split('/').Any(x=>x is ".." or "." or "")) return "INVARIANT_SOURCE_PATH_INVALID";
                 var file=Path.GetFullPath(Path.Combine(root,rel.Replace('/',Path.DirectorySeparatorChar)));
                 if(!file.StartsWith(root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)||!File.Exists(file)) return "INVARIANT_SOURCE_LOCATION_MISSING";
+                if(!TraceContract.AllowedLocations.Contains(rel,StringComparer.Ordinal)) return "INVARIANT_SOURCE_PATH_UNEXPECTED";
             }
+            foreach(var item in items)
+                if(!TraceContract.Matches(item.Id,item.Locations,item.Tests)) return "INVARIANT_TRACEABILITY_CONTRADICTION";
             var lab=File.ReadAllText(Path.Combine(root,"experiments","webauthn-windows-lab","LabTests.cs"));
             var ids=System.Text.RegularExpressions.Regex.Matches(lab,@"^\s*\(""[^""]+"",\s*(?<id>[A-Za-z0-9_]+)\)",System.Text.RegularExpressions.RegexOptions.Multiline).Select(m=>m.Groups["id"].Value).ToHashSet(StringComparer.Ordinal);
             foreach(var item in items) foreach(var test in item.Tests) if(!ids.Contains(test)) return "INVARIANT_TEST_REFERENCE_MISSING";

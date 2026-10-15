@@ -64,3 +64,13 @@ jobs:
 
       - name: Validate offline policy, traceability, and adversarial fixtures
         run: dotnet run --no-build --no-restore --configuration Release --project .\experiments\webauthn-offline-assurance\WebAuthn.OfflineAssurance.csproj -- --self-test .\experiments\webauthn-windows-lab\experimental-readiness.json .\experiments\webauthn-offline-assurance\invariant-registry.json .\experiments\webauthn-offline-assurance\fixtures .
+
+      - name: Create and audit local synthetic content candidate
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:RUNNER_TEMP 'phase-3c-4l-candidate'
+          $revision = git rev-parse HEAD
+          dotnet run --no-build --no-restore --configuration Release --project .\experiments\webauthn-offline-assurance\WebAuthn.OfflineAssurance.csproj -- --candidate-create . $revision $candidate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --no-build --no-restore --configuration Release --project .\experiments\webauthn-offline-assurance\WebAuthn.OfflineAssurance.csproj -- --candidate-audit . $revision $candidate
+          exit $LASTEXITCODE

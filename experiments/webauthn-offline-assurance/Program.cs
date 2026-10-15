@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 
 namespace WebAuthn.OfflineAssurance;
@@ -9,6 +8,13 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 4 && args[0] is "--candidate-create" or "--candidate-audit")
+            {
+                if (args[0] == "--candidate-create") SyntheticCandidate.Create(args[1], args[2], args[3]);
+                SyntheticCandidate.Audit(args[1], args[2], args[3]);
+                Console.WriteLine(JsonSerializer.Serialize(new { schemaVersion = 1, designation = "SYNTHETIC_ONLY", verificationStatus = "LOCAL_CONTENT_CONSISTENT_PRODUCER_UNAUTHENTICATED", productionAuthorization = "DEFAULT_DENY", realCredentialOperations = "NO_GO" }, JsonDefaults.Options));
+                return 0;
+            }
             if (args.Length == 3 && args[0] == "--policy-check")
             {
                 var result = AssuranceVerifier.PolicyCheck(ReadBounded(args[1]), ReadBounded(args[2]));
@@ -28,7 +34,7 @@ internal static class Program
                 Console.WriteLine(JsonSerializer.Serialize(result, JsonDefaults.Options));
                 return result.Failures == 0 ? 0 : 1;
             }
-            Console.Error.WriteLine("usage: --policy-check <manifest> <registry> | --report <manifest> <registry> <evidence> <source-revision|-> <repository-root> | --self-test <manifest> <registry> <fixture-dir> <repository-root>");
+            Console.Error.WriteLine("usage: --policy-check <manifest> <registry> | --report <manifest> <registry> <evidence> <source-revision|-> <repository-root> | --self-test <manifest> <registry> <fixture-dir> <repository-root> | --candidate-create <repository-root> <base-revision> <new-directory> | --candidate-audit <repository-root> <base-revision> <candidate-directory>");
             return 64;
         }
         catch (AssuranceInputException error)
@@ -45,9 +51,6 @@ internal static class Program
 
     private static string ReadBounded(string path)
     {
-        var info = new FileInfo(path);
-        if (!info.Exists || info.Length > StrictJson.MaximumBytes)
-            throw new AssuranceInputException("INPUT_MISSING_OR_OVERSIZED");
-        return File.ReadAllText(path, Encoding.UTF8);
+        return BoundedInput.Read(path);
     }
 }

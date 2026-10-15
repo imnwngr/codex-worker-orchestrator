@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:orchestrator:phase4a:design-contracts:1",
+  "title": "Offline design scenario; never an authorization token",
+  "$ref": "#/$defs/scenario",
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "model": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$", "description": "Bounded intersection with the offline v1 identifier alphabet; slash-bearing configured models require a future protocol compatibility decision." },
+    "hash": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[a-f0-9]{64}$" },
+    "time": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "version": { "const": 1 },
+    "designation": { "const": "SYNTHETIC_DESIGN_ONLY" },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "provider", "model", "task", "effort", "timeoutSeconds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "provider": { "$ref": "#/$defs/id" }, "model": { "$ref": "#/$defs/model" },
+        "task": { "type": "string", "minLength": 1, "maxLength": 50000 },
+        "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 }
+      }
+    },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "requestId", "batchId", "sessionId", "createdAt", "targets"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "requestId": { "$ref": "#/$defs/id" }, "batchId": { "$ref": "#/$defs/id" }, "sessionId": { "$ref": "#/$defs/id" },
+        "createdAt": { "$ref": "#/$defs/time" },
+        "targets": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/target" } }
+      }
+    },
+    "taskIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["id", "taskSha256", "normalization"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "taskSha256": { "$ref": "#/$defs/hash" }, "normalization": { "const": "ECMASCRIPT_TRIM_UTF8_V1" } }
+    },
+    "batchIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["batchId", "orderedTargetIds", "batchSha256"],
+      "properties": {
+        "batchId": { "$ref": "#/$defs/id" }, "batchSha256": { "$ref": "#/$defs/hash" },
+        "orderedTargetIds": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    "displayTarget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "providerId", "modelId", "destination", "task", "taskSha256", "effort", "timeoutSeconds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "providerId": { "$ref": "#/$defs/id" }, "modelId": { "$ref": "#/$defs/model" },
+        "destination": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "task": { "type": "string", "minLength": 1, "maxLength": 50000 }, "taskSha256": { "$ref": "#/$defs/hash" },
+        "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 }
+      }
+    },
+    "approvalData": {
+      "description": "Existing offline WebAuthn v1 data shape; no assertion, key or signature is issued or verified here.",
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "approvalId", "providerId", "modelId", "taskSha256", "configFingerprint", "batchId", "batchSha256", "nonce", "sessionId", "expiresAt"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" }, "approvalId": { "$ref": "#/$defs/id" },
+        "providerId": { "$ref": "#/$defs/id" }, "modelId": { "$ref": "#/$defs/model" },
+        "taskSha256": { "$ref": "#/$defs/hash" }, "configFingerprint": { "$ref": "#/$defs/hash" },
+        "batchId": { "$ref": "#/$defs/id" }, "batchSha256": { "$ref": "#/$defs/hash" },
+        "nonce": { "type": "string", "minLength": 43, "maxLength": 43, "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "sessionId": { "$ref": "#/$defs/id" }, "expiresAt": { "$ref": "#/$defs/time" }
+      }
+    },
+    "approvalRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "requestId", "createdAt", "expiresAt", "applicationIdentity", "userIdentity", "displayTargets", "approvalData"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "requestId": { "$ref": "#/$defs/id" }, "createdAt": { "$ref": "#/$defs/time" }, "expiresAt": { "$ref": "#/$defs/time" },
+        "applicationIdentity": { "const": "UNESTABLISHED" }, "userIdentity": { "const": "UNESTABLISHED" },
+        "displayTargets": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/displayTarget" } },
+        "approvalData": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/approvalData" } }
+      }
+    },
+    "decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "requestId", "contextSha256", "decision", "decidedAt", "provenance", "states"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "requestId": { "$ref": "#/$defs/id" }, "contextSha256": { "$ref": "#/$defs/hash" }, "decidedAt": { "$ref": "#/$defs/time" },
+        "decision": { "enum": ["APPROVE_MOCK", "REJECT", "EXPIRED", "CANCELLED"] },
+        "provenance": { "const": "SYNTHETIC_FIXTURE_NOT_USER_APPROVAL" },
+        "states": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "enum": ["Pending", "ApprovedMock", "Rejected", "Expired", "Cancelled"] } }
+      }
+    },
+    "proofEnvelope": {
+      "description": "Placeholder design envelope; intentionally incompatible with both existing cryptographic verifier envelopes.",
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "requestId", "contextSha256", "protocol", "authority"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "requestId": { "$ref": "#/$defs/id" }, "contextSha256": { "$ref": "#/$defs/hash" }, "protocol": { "const": "NONE" }, "authority": { "const": "NONE" }
+      }
+    },
+    "brokerOutcome": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "requestId", "contextSha256", "status", "reason", "productionAuthorization"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "requestId": { "$ref": "#/$defs/id" }, "contextSha256": { "$ref": "#/$defs/hash" },
+        "status": { "const": "DENY" }, "reason": { "const": "AUTHORITY_NOT_ESTABLISHED" }, "productionAuthorization": { "const": "DEFAULT_DENY" }
+      }
+    },
+    "audit": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "event", "requestId", "batchId", "outcome", "reason", "occurredAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "event": { "const": "contract_checked" }, "requestId": { "$ref": "#/$defs/id" }, "batchId": { "$ref": "#/$defs/id" },
+        "outcome": { "const": "DENY" }, "reason": { "const": "AUTHORITY_NOT_ESTABLISHED" }, "occurredAt": { "$ref": "#/$defs/time" }
+      }
+    },
+    "cancellation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "requestId", "state", "operationState", "retryPolicy"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" }, "requestId": { "$ref": "#/$defs/id" },
+        "state": { "enum": ["NONE", "CANCELLED_BEFORE_START", "OUTCOME_UNKNOWN"] },
+        "operationState": { "enum": ["NOT_STARTED", "MAY_HAVE_STARTED"] },
+        "retryPolicy": { "enum": ["NO_AUTOMATIC_RETRY", "RECONCILE_FIRST"] }
+      }
+    },
+    "providerResult": {
+      "type": "object", "additionalProperties": false, "required": ["schemaVersion", "designation", "status", "response", "authority"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "status": { "const": "ADVISORY_ONLY" }, "response": { "type": "string", "minLength": 1, "maxLength": 8192 }, "authority": { "const": "NONE" }
+      }
+    },
+    "scenarioCollection": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/scenario" } },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "designation", "configuration", "request", "taskIdentities", "batchIdentity", "approvalRequest", "decision", "proofEnvelope", "brokerOutcome", "audit", "cancellation", "providerResult"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/version" }, "designation": { "$ref": "#/$defs/designation" },
+        "configuration": { "type": "object", "description": "Delegates to existing validateConfig v1; no new provider configuration schema." },
+        "request": { "$ref": "#/$defs/request" },
+        "taskIdentities": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/taskIdentity" } },
+        "batchIdentity": { "$ref": "#/$defs/batchIdentity" }, "approvalRequest": { "$ref": "#/$defs/approvalRequest" },
+        "decision": { "$ref": "#/$defs/decision" }, "proofEnvelope": { "$ref": "#/$defs/proofEnvelope" },
+        "brokerOutcome": { "$ref": "#/$defs/brokerOutcome" }, "audit": { "$ref": "#/$defs/audit" },
+        "cancellation": { "$ref": "#/$defs/cancellation" }, "providerResult": { "$ref": "#/$defs/providerResult" }
+      }
+    }
+  }
+}

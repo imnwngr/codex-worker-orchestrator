@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "designation": "SYNTHETIC_DESIGN_ONLY",
+  "configuration": {
+    "version": 1,
+    "defaultProvider": "fixture-api",
+    "providers": [
+      {
+        "id": "fixture-api",
+        "kind": "api",
+        "enabled": true,
+        "baseUrl": "https://api.example.invalid/v1",
+        "timeoutSeconds": 120,
+        "models": [
+          "model-alpha",
+          "model-beta"
+        ],
+        "defaultModel": "model-alpha",
+        "credentialEnv": "SYNTHETIC_UNUSED_KEY"
+      }
+    ]
+  },
+  "request": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "requestId": "request-fixture-1",
+    "batchId": "batch-fixture-1",
+    "sessionId": "session-fixture-1",
+    "createdAt": 1800000000000,
+    "targets": [
+      {
+        "id": "target-a",
+        "provider": "fixture-api",
+        "model": "model-alpha",
+        "task": "  SYNTHETIC ONLY\r\nReview café assumptions.  ",
+        "effort": "high",
+        "timeoutSeconds": 30
+      },
+      {
+        "id": "target-b",
+        "provider": "fixture-api",
+        "model": "model-beta",
+        "task": "SYNTHETIC ONLY: compare alternatives.",
+        "effort": "medium",
+        "timeoutSeconds": 60
+      }
+    ]
+  },
+  "taskIdentities": [
+    {
+      "id": "target-a",
+      "taskSha256": "8114162fd751d1aaa606d7a6f9392482d070d7ea17868f87dd1ff4ff0eb8505e",
+      "normalization": "ECMASCRIPT_TRIM_UTF8_V1"
+    },
+    {
+      "id": "target-b",
+      "taskSha256": "3e9e680aa62476333fd7a637a6171776eb943752d4701fadb1c014cf23c61b28",
+      "normalization": "ECMASCRIPT_TRIM_UTF8_V1"
+    }
+  ],
+  "batchIdentity": {
+    "batchId": "batch-fixture-1",
+    "orderedTargetIds": [
+      "target-a",
+      "target-b"
+    ],
+    "batchSha256": "c23486ba4492cd4ff4f87d792dc8b37ba259d07db4bca5ef0c05d9b05b66d737"
+  },
+  "approvalRequest": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "requestId": "request-fixture-1",
+    "createdAt": 1800000000000,
+    "expiresAt": 1800000300000,
+    "applicationIdentity": "UNESTABLISHED",
+    "userIdentity": "UNESTABLISHED",
+    "displayTargets": [
+      {
+        "id": "target-a",
+        "providerId": "fixture-api",
+        "modelId": "model-alpha",
+        "destination": "https://api.example.invalid/v1/chat/completions",
+        "task": "SYNTHETIC ONLY\r\nReview café assumptions.",
+        "taskSha256": "8114162fd751d1aaa606d7a6f9392482d070d7ea17868f87dd1ff4ff0eb8505e",
+        "effort": "high",
+        "timeoutSeconds": 30
+      },
+      {
+        "id": "target-b",
+        "providerId": "fixture-api",
+        "modelId": "model-beta",
+        "destination": "https://api.example.invalid/v1/chat/completions",
+        "task": "SYNTHETIC ONLY: compare alternatives.",
+        "taskSha256": "3e9e680aa62476333fd7a637a6171776eb943752d4701fadb1c014cf23c61b28",
+        "effort": "medium",
+        "timeoutSeconds": 60
+      }
+    ],
+    "approvalData": [
+      {
+        "version": 1,
+        "approvalId": "approval-fixture-0",
+        "providerId": "fixture-api",
+        "modelId": "model-alpha",
+        "taskSha256": "8114162fd751d1aaa606d7a6f9392482d070d7ea17868f87dd1ff4ff0eb8505e",
+        "configFingerprint": "da66d8215316975c6db2c2263aa648671230c10fae3e823f721002bc1a41f66c",
+        "batchId": "batch-fixture-1",
+        "batchSha256": "c23486ba4492cd4ff4f87d792dc8b37ba259d07db4bca5ef0c05d9b05b66d737",
+        "nonce": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "sessionId": "session-fixture-1",
+        "expiresAt": 1800000300000
+      },
+      {
+        "version": 1,
+        "approvalId": "approval-fixture-1",
+        "providerId": "fixture-api",
+        "modelId": "model-beta",
+        "taskSha256": "3e9e680aa62476333fd7a637a6171776eb943752d4701fadb1c014cf23c61b28",
+        "configFingerprint": "da66d8215316975c6db2c2263aa648671230c10fae3e823f721002bc1a41f66c",
+        "batchId": "batch-fixture-1",
+        "batchSha256": "c23486ba4492cd4ff4f87d792dc8b37ba259d07db4bca5ef0c05d9b05b66d737",
+        "nonce": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+        "sessionId": "session-fixture-1",
+        "expiresAt": 1800000300000
+      }
+    ]
+  },
+  "decision": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "requestId": "request-fixture-1",
+    "contextSha256": "e425a7cb6094767ccf7a8cc01ff6b4c0b916a9ee1f799f8311d8120453c95082",
+    "decision": "APPROVE_MOCK",
+    "decidedAt": 1800000001000,
+    "provenance": "SYNTHETIC_FIXTURE_NOT_USER_APPROVAL",
+    "states": [
+      "Pending",
+      "ApprovedMock"
+    ]
+  },
+  "proofEnvelope": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "requestId": "request-fixture-1",
+    "contextSha256": "e425a7cb6094767ccf7a8cc01ff6b4c0b916a9ee1f799f8311d8120453c95082",
+    "protocol": "NONE",
+    "authority": "NONE"
+  },
+  "brokerOutcome": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "requestId": "request-fixture-1",
+    "contextSha256": "e425a7cb6094767ccf7a8cc01ff6b4c0b916a9ee1f799f8311d8120453c95082",
+    "status": "DENY",
+    "reason": "AUTHORITY_NOT_ESTABLISHED",
+    "productionAuthorization": "DEFAULT_DENY"
+  },
+  "audit": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "event": "contract_checked",
+    "requestId": "request-fixture-1",
+    "batchId": "batch-fixture-1",
+    "outcome": "DENY",
+    "reason": "AUTHORITY_NOT_ESTABLISHED",
+    "occurredAt": 1800000001500
+  },
+  "cancellation": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "requestId": "request-fixture-1",
+    "state": "NONE",
+    "operationState": "NOT_STARTED",
+    "retryPolicy": "NO_AUTOMATIC_RETRY"
+  },
+  "providerResult": {
+    "schemaVersion": 1,
+    "designation": "SYNTHETIC_DESIGN_ONLY",
+    "status": "ADVISORY_ONLY",
+    "response": "Synthetic advisory content; no action was executed.",
+    "authority": "NONE"
+  }
+}

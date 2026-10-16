@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\ApprovalAgent.Mock\Models\HybridSimulation.cs" Link="Models\HybridSimulation.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Models\HybridMethods.cs" Link="Models\HybridMethods.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Services\ApprovalMethodPreferences.cs" Link="Services\ApprovalMethodPreferences.cs" />
     <Compile Include="..\ApprovalAgent.Mock\ViewModels\ApprovalMethodSelection.cs" Link="ViewModels\ApprovalMethodSelection.cs" />

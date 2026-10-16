@@ -17,13 +17,22 @@
     </Border>
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Margin="32,28" MaxWidth="1080">
-        <Button Content="_Select review file…" HorizontalAlignment="Left" Style="{StaticResource ActionButton}" Click="SelectFile_Click"
+        <Button x:Name="SelectFileButton" Content="_Select review file…" HorizontalAlignment="Left" Style="{StaticResource ActionButton}" Click="SelectFile_Click"
                 AutomationProperties.Name="Explicitly select an untrusted offline review file"/>
         <Border Style="{StaticResource ReviewCard}" Margin="0,18,0,0">
           <StackPanel>
             <TextBlock Text="HYBRID APPROVAL / ALL METHODS NON-AUTHORIZING" Style="{StaticResource EyebrowText}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding MethodDisplay, StringFormat='Current review method: {0}'}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,10,0,0"/>
             <TextBlock Text="{Binding MethodDescription}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding SimulationDisplay}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="B/C scripted fixtures: component/device/origin claims are UNVERIFIED. Selection and simulated completion never authorize execution." TextWrapping="Wrap"/>
+            <WrapPanel>
+              <Button Content="_Start simulation" Click="StartSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              <Button Content="Simulate _delivery (C)" Click="DeliverSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              <Button Content="Simulate _response" Click="CompleteSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              <Button Content="Simulate _unknown (C)" Click="UnknownSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              <Button Content="Abandon unknown / reco_ver" Click="RecoverSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+            </WrapPanel>
             <TextBlock Text="{Binding MethodStatus, StringFormat='Policy availability: {0}'}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding PreferenceDisplay, StringFormat='Future default: {0}'}" TextWrapping="Wrap" Margin="0,8,0,10"/>
             <WrapPanel>
@@ -80,6 +89,7 @@
         <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,5,0,12"
                    AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Offline mock decision status"/>
         <WrapPanel>
+          <Button Content="_Abandon pending review" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanSwitch}" Click="Abandon_Click" Margin="0,0,10,0"/>
           <Button Content="_Reject" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Click="Reject_Click" Margin="0,0,10,0"/>
           <Button Content="_Cancel review" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Click="Cancel_Click" Margin="0,0,10,0"/>
           <Button Content="Approve _Mock (local)" Style="{StaticResource PrimaryActionButton}" IsEnabled="{Binding CanDecide}" Click="ApproveMock_Click"/>

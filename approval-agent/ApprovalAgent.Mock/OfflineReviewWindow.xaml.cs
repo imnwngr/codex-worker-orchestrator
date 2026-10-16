@@ -15,10 +15,26 @@ public partial class OfflineReviewWindow : Window
     private bool _offeredOnboarding;
     public OfflineReviewWindow(MainWindow owner)
     {
-        Resources = owner.Resources;
+        Resources = new ResourceDictionary(); Resources.MergedDictionaries.Add(owner.Resources);
+        // Use native system colors/styles when opened in Windows high contrast mode.
+        if (SystemParameters.HighContrast) {
+            foreach (var key in new[] { "CanvasBrush", "SurfaceBrush", "PaperBrush", "SurfaceMutedBrush" }) Resources[key] = SystemColors.WindowBrush;
+            foreach (var key in new[] { "InkBrush", "SecondaryInkBrush", "LineBrush", "FocusBrush" }) Resources[key] = SystemColors.WindowTextBrush;
+            Resources["HeaderSubtleBrush"] = SystemColors.WindowBrush;
+            foreach (var key in new[] { "ActionButton", "PrimaryActionButton" }) Resources[key] = new Style(typeof(System.Windows.Controls.Button)) {
+                Setters = { new Setter(MinHeightProperty, 40.0), new Setter(MarginProperty, new Thickness(4)) }
+            };
+            foreach (var key in new[] { "EyebrowText", "SectionTitle", "MutedText" }) Resources[key] = new Style(typeof(System.Windows.Controls.TextBlock)) {
+                Setters = { new Setter(System.Windows.Controls.TextBlock.ForegroundProperty, SystemColors.WindowTextBrush), new Setter(System.Windows.Controls.TextBlock.TextWrappingProperty, TextWrapping.Wrap) }
+            };
+            Resources["ReviewCard"] = new Style(typeof(System.Windows.Controls.Border)) {
+                Setters = { new Setter(System.Windows.Controls.Border.BackgroundProperty, SystemColors.WindowBrush), new Setter(System.Windows.Controls.Border.PaddingProperty, new Thickness(16)) }
+            };
+            Resources["ReviewTextBox"] = new Style(typeof(System.Windows.Controls.TextBox));
+        }
         InitializeComponent(); Owner = owner; DataContext = _review;
         var preference = _preferences.Read(); _review.SetPreference(preference.PreferredMethod);
-        Loaded += (_, _) => OfferOnboarding();
+        Loaded += (_, _) => { OfferOnboarding(); SelectFileButton.Focus(); };
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => _review.RefreshExpiry(); _timer.Start();
         Closed += (_, _) => { _timer.Stop(); _review.DecideCurrent(OfflineMockState.Cancelled); };
@@ -37,7 +53,15 @@ public partial class OfflineReviewWindow : Window
         var dialog = new OpenFileDialog { Title = "Select untrusted offline synthetic review data", Filter = "Offline review (*.review.json)|*.review.json", CheckFileExists = true, Multiselect = false };
         if (dialog.ShowDialog(this) == true) _review.LoadFile(dialog.FileName);
     }
+    private void Simulate(string action)
+    { if (_review.SimulationToken is { } token) _review.Simulate(action, token, _review.Simulation.FixtureId); else _review.ReportUnavailable(); }
+    private void StartSimulation_Click(object sender, RoutedEventArgs e) => Simulate("START");
+    private void DeliverSimulation_Click(object sender, RoutedEventArgs e) => Simulate("DELIVER");
+    private void CompleteSimulation_Click(object sender, RoutedEventArgs e) => Simulate("COMPLETE");
+    private void UnknownSimulation_Click(object sender, RoutedEventArgs e) => Simulate("UNKNOWN");
+    private void RecoverSimulation_Click(object sender, RoutedEventArgs e) => Simulate("RECOVER");
     private void Reject_Click(object sender, RoutedEventArgs e) => _review.DecideCurrent(OfflineMockState.Rejected);
+    private void Abandon_Click(object sender, RoutedEventArgs e) => _review.DecideCurrent(OfflineMockState.Cancelled);
     private void Cancel_Click(object sender, RoutedEventArgs e) => _review.DecideCurrent(OfflineMockState.Cancelled);
     private void ApproveMock_Click(object sender, RoutedEventArgs e) => _review.DecideCurrent(OfflineMockState.ApprovedMock);
     private void Window_KeyDown(object sender, KeyEventArgs e)

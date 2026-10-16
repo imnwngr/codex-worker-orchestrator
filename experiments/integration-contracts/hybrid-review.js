@@ -2,6 +2,7 @@
 
 // Local mock coordination only. No transport, provider, proof or persistence dependencies.
 const { assertPrepared, clockValue, freeze } = require("./prepare-request");
+const { HybridSimulation } = require("./hybrid-simulation");
 const { createReview } = require("./review-preview");
 
 const METHODS = freeze([
@@ -33,10 +34,12 @@ function checkPolicy(metadata, policy) {
 }
 
 class HybridCoordinator {
+  #instanceId = require("node:crypto").randomUUID();
+  #simulation = new HybridSimulation();
   #clock; #policy; #preferred; #context = null; #selected = null; #generation = 0; #review = null; #state = "NO_REQUEST"; #reason = "NO_REQUEST";
   constructor({ now = Date.now, preferredMethod = null, policy = {} } = {}) {
     if (typeof now !== "function" || (preferredMethod !== null && !method(preferredMethod))) throw new Error("HYBRID_OPTIONS_INVALID");
-    this.#clock = now; this.#preferred = preferredMethod; this.#policy = policyOptions(policy);
+    let last = -Infinity; this.#clock = () => { const value = now(); if (!Number.isSafeInteger(value) || value < last) throw Error("INVALID_CLOCK"); last = value; return value; }; this.#preferred = preferredMethod; this.#policy = policyOptions(policy);
   }
   setPreference(id) {
     if (id !== null && !method(id)) return false;
@@ -51,24 +54,25 @@ class HybridCoordinator {
     if (!Number.isSafeInteger(this.#generation + 1)) throw new Error("HYBRID_GENERATION_EXHAUSTED");
     this.#context = context; this.#review = review; this.#generation++;
     this.#selected = this.#preferred ?? "LOCAL_DESKTOP"; this.#state = "Pending"; this.#reason = this.#check(this.#selected);
+    this.#resetSimulation();
     return this.view();
   }
   #check(id) { return checkPolicy(method(id), this.#policy); }
   #refresh() {
     if (this.#state !== "Pending") return;
-    try { if (this.#review.view().state === "Expired") { this.#state = "Expired"; this.#reason = "EXPIRED"; } }
-    catch { this.#state = "Expired"; this.#reason = "INVALID_CLOCK"; }
+    try { if (this.#review.view().state === "Expired") { this.#state = "Expired"; this.#reason = "EXPIRED"; this.#simulation.end("Expired"); } }
+    catch { this.#state = "Expired"; this.#reason = "INVALID_CLOCK"; this.#simulation.end("Expired"); }
   }
   #matches(token) {
-    return token && token.requestId === this.#context?.requestId && token.sessionId === this.#context?.sessionId &&
+    return token && typeof token === "object" && !Array.isArray(token) && Object.keys(token).length === 6 && token.instanceId === this.#instanceId && token.requestId === this.#context?.requestId && token.sessionId === this.#context?.sessionId &&
       token.contextSha256 === this.#context?.contextSha256 && token.generation === this.#generation && token.methodId === this.#selected;
   }
   view() {
     this.#refresh();
-    return freeze({ designation: "SYNTHETIC_DESIGN_ONLY", preferredMethod: this.#preferred, selectedMethod: this.#selected,
+    return freeze({ simulation: this.#simulation.view(), designation: "SYNTHETIC_DESIGN_ONLY", preferredMethod: this.#preferred, selectedMethod: this.#selected,
       state: this.#state, reason: this.#reason, generation: this.#generation,
       correlation: this.#context ? { requestId: this.#context.requestId, sessionId: this.#context.sessionId,
-        contextSha256: this.#context.contextSha256, generation: this.#generation, methodId: this.#selected } : null,
+        instanceId: this.#instanceId, contextSha256: this.#context.contextSha256, generation: this.#generation, methodId: this.#selected } : null,
       preview: this.#review?.preview ?? null, expiresAt: this.#context?.expiresAt ?? null,
       canSwitch: this.#state === "Pending", canDecide: this.#state === "Pending" && this.#check(this.#selected) === "OFFLINE_ONLY",
       authorized: false, productionAuthorization: "DEFAULT_DENY" });
@@ -80,25 +84,41 @@ class HybridCoordinator {
     const reason = this.#check(id);
     if (reason !== "OFFLINE_ONLY") { this.#reason = reason; return false; }
     if (id !== this.#selected) {
-      if (!Number.isSafeInteger(this.#generation + 1)) { this.#state = "Cancelled"; this.#reason = "HYBRID_GENERATION_EXHAUSTED"; return false; }
+      if (!Number.isSafeInteger(this.#generation + 1)) { this.#state = "Cancelled"; this.#reason = "HYBRID_GENERATION_EXHAUSTED"; this.#simulation.end("Cancelled"); return false; }
       // Validate the candidate generation before replacing the current review. A clock can
       // advance between opening and applying a picker; expiry must not be revived.
       let candidate;
       try {
         candidate = createReview(this.#context, this.#clock);
-        if (candidate.view().state === "Expired") { this.#state = "Expired"; this.#reason = "EXPIRED"; return false; }
-      } catch { this.#state = "Expired"; this.#reason = "INVALID_CLOCK"; return false; }
+        if (candidate.view().state === "Expired") { this.#state = "Expired"; this.#reason = "EXPIRED"; this.#simulation.end("Expired"); return false; }
+      } catch { this.#state = "Expired"; this.#reason = "INVALID_CLOCK"; this.#simulation.end("Expired"); return false; }
       this.#review = candidate;
-      this.#selected = id; this.#generation++;
+      this.#selected = id; this.#generation++; this.#resetSimulation();
     }
     if (setAsDefault) this.#preferred = id;
     this.#reason = "OFFLINE_ONLY"; return true;
   }
+  #resetSimulation() {
+    this.#simulation.reset(this.view().correlation, this.#state === "Pending" && this.#selected !== "LOCAL_DESKTOP" && this.#check(this.#selected) === "OFFLINE_ONLY");
+  }
+  simulate(action, token, fixtureId) {
+    this.#refresh();
+    if (this.#state !== "Pending" || this.#selected === "LOCAL_DESKTOP" || !this.#matches(token) || this.#check(this.#selected) !== "OFFLINE_ONLY" || !this.#simulation.apply(action, token, fixtureId)) return false;
+    const state = this.#simulation.view().state;
+    const decision = { SimulatedComplete: "APPROVE_MOCK", Rejected: "REJECT", Cancelled: "CANCEL" }[state];
+    return decision ? this.decide(decision, token) : true;
+  }
   decide(action, token) {
     this.#refresh();
-    if (this.#state !== "Pending" || !this.#matches(token) || this.#check(this.#selected) !== "OFFLINE_ONLY" || !["APPROVE_MOCK", "REJECT", "CANCEL"].includes(action)) return false;
-    try { this.#state = this.#review.decide(action).state; this.#reason = "LOCAL_MOCK_ONLY_NO_DISPATCH"; return true; }
-    catch { this.#state = "Expired"; this.#reason = "INVALID_CLOCK"; return false; }
+    if (this.#state !== "Pending" || !this.#matches(token) || (action !== "CANCEL" && this.#check(this.#selected) !== "OFFLINE_ONLY") || !["APPROVE_MOCK", "REJECT", "CANCEL"].includes(action)) return false;
+    try {
+      const decision = this.#review.decide(action);
+      // The nested canonical check/capture may reach the original expiry after refresh.
+      if (decision.state === "Expired" || decision.decidedAt >= this.#context.expiresAt) {
+        this.#state = "Expired"; this.#reason = "EXPIRED"; this.#simulation.end("Expired"); return false;
+      }
+      this.#state = decision.state; this.#reason = "LOCAL_MOCK_ONLY_NO_DISPATCH"; this.#simulation.end(this.#state === "ApprovedMock" ? "SimulatedComplete" : this.#state); return true; }
+    catch { this.#state = "Expired"; this.#reason = "INVALID_CLOCK"; this.#simulation.end("Expired"); return false; }
   }
 }
 module.exports = { METHODS, metadataValid, HybridCoordinator };

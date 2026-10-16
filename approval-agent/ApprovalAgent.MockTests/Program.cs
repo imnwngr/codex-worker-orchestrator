@@ -40,6 +40,7 @@ var tests = new (string Name, Action Run)[]
 };
 
 tests = tests.Concat(OfflineReviewTests.Cases()).ToArray();
+tests = tests.Concat(HybridTests.Cases()).ToArray();
 var failures = 0;
 foreach (var (name, run) in tests)
 {

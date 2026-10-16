@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\ApprovalAgent.Mock\Models\HybridMethods.cs" Link="Models\HybridMethods.cs" />
+    <Compile Include="..\ApprovalAgent.Mock\Services\ApprovalMethodPreferences.cs" Link="Services\ApprovalMethodPreferences.cs" />
+    <Compile Include="..\ApprovalAgent.Mock\ViewModels\ApprovalMethodSelection.cs" Link="ViewModels\ApprovalMethodSelection.cs" />
+    <None Include="..\ApprovalAgent.Mock\ApprovalMethodWindow.xaml" Link="Fixtures\ApprovalMethodWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="..\ApprovalAgent.Mock\Models\OfflineReviewContext.cs" Link="Models\OfflineReviewContext.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Services\ReviewJson.cs" Link="Services\ReviewJson.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Services\OfflineReviewValidator.cs" Link="Services\OfflineReviewValidator.cs" />

@@ -1,0 +1,42 @@
+<Window x:Class="ApprovalAgent.Mock.ApprovalMethodWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Approval Method — Offline Hybrid Foundation" Width="740" Height="690"
+        MinWidth="560" MinHeight="500" WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource UiFont}" FontSize="14" Background="{StaticResource CanvasBrush}" KeyDown="Window_KeyDown">
+  <Grid Margin="28">
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <TextBlock x:Name="Heading" Text="CHOOSE YOUR APPROVAL METHOD" Style="{StaticResource SectionTitle}" TextWrapping="Wrap"/>
+        <TextBlock Text="SYNTHETIC / NO DISPATCH — no method establishes identity or production approval."
+                   FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,8"/>
+        <TextBlock x:Name="Explanation" TextWrapping="Wrap" Style="{StaticResource MutedText}"/>
+        <Label Content="_Method" Target="{Binding ElementName=MethodPicker}" Margin="0,16,0,6"/>
+        <ComboBox x:Name="MethodPicker" ItemsSource="{Binding Options}" DisplayMemberPath="Label" MinHeight="36"
+                  AutomationProperties.Name="Explicitly choose A B or C approval method"/>
+        <ItemsControl ItemsSource="{Binding Options}" Margin="0,16,0,0">
+          <ItemsControl.ItemTemplate><DataTemplate>
+            <Border Style="{StaticResource ReviewCard}" Margin="0,0,0,12"><StackPanel>
+              <TextBlock Text="{Binding Method.DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding Method.Description}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+              <TextBlock Text="{Binding Method.Availability, StringFormat='Offline availability: {0}'}" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding PolicyStatus, StringFormat='Policy: {0}'}" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding Method.Prerequisites}" TextWrapping="Wrap" Style="{StaticResource MutedText}"/>
+            </StackPanel></Border>
+          </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <CheckBox x:Name="SaveDefault" Content="Set as _default for future requests" IsChecked="False" Margin="0,6,0,12"
+                  AutomationProperties.Name="Optional save as default for future requests, initially unchecked"/>
+      </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Row="1" Margin="0,12,0,0">
+      <TextBlock x:Name="Feedback" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Margin="0,0,0,10"/>
+      <WrapPanel>
+        <Button x:Name="ApplyButton" Content="_Save preference" Style="{StaticResource PrimaryActionButton}" Click="Apply_Click" Margin="0,0,10,8"/>
+        <Button x:Name="ResetButton" Content="_Reset preference" Style="{StaticResource ActionButton}" Click="Reset_Click" Margin="0,0,10,8"/>
+        <Button Content="_Cancel" Style="{StaticResource ActionButton}" Click="Cancel_Click" Margin="0,0,0,8"/>
+      </WrapPanel>
+    </StackPanel>
+  </Grid>
+</Window>

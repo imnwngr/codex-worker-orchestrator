@@ -51,6 +51,11 @@ public partial class MainWindow : Window
         _viewModel.ApproveMock();
     }
 
+    private void OpenOfflineReview_Click(object sender, RoutedEventArgs e)
+    {
+        new OfflineReviewWindow(this).Show();
+    }
+
     private void Reject_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.Reject();

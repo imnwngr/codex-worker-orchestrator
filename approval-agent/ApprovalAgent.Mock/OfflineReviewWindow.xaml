@@ -1,0 +1,77 @@
+<Window x:Class="ApprovalAgent.Mock.OfflineReviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Approval Agent — Offline Review Preview" Width="1060" Height="820"
+        MinWidth="740" MinHeight="620" WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource UiFont}" FontSize="14" KeyDown="Window_KeyDown"
+        TextOptions.TextFormattingMode="Display" Background="{StaticResource CanvasBrush}">
+  <!-- Reuse the owner's original Hallmark resources; the fixed Mock window remains the default. -->
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border Background="{StaticResource InkBrush}" Padding="28,20">
+      <StackPanel>
+        <TextBlock Text="{Binding Warning}" Foreground="{StaticResource SurfaceBrush}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Text="Local file data only. Producer, application and USER identity are UNESTABLISHED."
+                   Foreground="{StaticResource HeaderSubtleBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="32,28" MaxWidth="1080">
+        <Button Content="_Select review file…" HorizontalAlignment="Left" Style="{StaticResource ActionButton}" Click="SelectFile_Click"
+                AutomationProperties.Name="Explicitly select an untrusted offline review file"/>
+        <Border Style="{StaticResource ReviewCard}" Margin="0,18,0,18">
+          <StackPanel>
+            <TextBlock Text="REVIEW IDENTITY / UNAUTHENTICATED" Style="{StaticResource EyebrowText}"/>
+            <TextBlock Text="{Binding Context.RequestId, StringFormat='Request: {0}'}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Context.BatchId, StringFormat='Batch: {0}'}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Context.SessionId, StringFormat='Session metadata: {0}'}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Context.ContextSha256, StringFormat='Context SHA-256: {0}'}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Context.ConfigurationFingerprint, StringFormat='Configuration fingerprint: {0}'}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding ExpiresAtDisplay, StringFormat='Expires: {0}'}" TextWrapping="Wrap"/>
+            <TextBlock Text="Matching digests establish consistency, not authenticated provenance or USER consent. DEFAULT-DENY remains in force."
+                       Style="{StaticResource MutedText}" Margin="0,10,0,0"/>
+          </StackPanel>
+        </Border>
+        <ItemsControl ItemsSource="{Binding Targets, Mode=OneWay}" AlternationCount="8">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Style="{StaticResource ReviewCard}" Margin="0,0,0,18">
+                <StackPanel>
+                  <TextBlock Text="{Binding Id, StringFormat='ORDERED TARGET / {0}'}" Style="{StaticResource SectionTitle}"/>
+                  <TextBlock Text="{Binding ProviderId, StringFormat='Provider: {0}'}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                  <TextBlock Text="{Binding ModelId, StringFormat='Model: {0}'}" TextWrapping="Wrap"/>
+                  <TextBlock Text="{Binding Destination, StringFormat='Destination: {0}'}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap"/>
+                  <TextBlock Text="Complete effective task" Style="{StaticResource EyebrowText}" Margin="0,18,0,8"/>
+                  <TextBox Text="{Binding Task, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True"
+                           Style="{StaticResource ReviewTextBox}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap"
+                           VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MinHeight="140" MaxHeight="350"
+                           AutomationProperties.Name="Complete validated effective task, read only"/>
+                  <TextBlock Text="{Binding TaskSha256, StringFormat='Task SHA-256: {0}'}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                  <TextBlock Text="Exact wire body" Style="{StaticResource EyebrowText}" Margin="0,18,0,8"/>
+                  <TextBox Text="{Binding WireJson, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True"
+                           Style="{StaticResource ReviewTextBox}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap"
+                           VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MaxHeight="220"/>
+                  <TextBlock Text="{Binding EffectiveTimeoutSeconds, StringFormat='Effective registry deadline: {0}s'}" TextWrapping="Wrap" Margin="0,12,0,0"/>
+                  <TextBlock Text="{Binding AdapterTimeoutSeconds, StringFormat='Configured adapter timer: {0}s'}" TextWrapping="Wrap"/>
+                  <TextBlock Text="{Binding RequestedEffort, StringFormat='Effort metadata (NOT SENT to API): {0}'}" TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+    <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="28,16">
+      <StackPanel>
+        <TextBlock Text="{Binding State}" Style="{StaticResource EyebrowText}"/>
+        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,5,0,12"
+                   AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Offline mock decision status"/>
+        <WrapPanel>
+          <Button Content="_Reject" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Click="Reject_Click" Margin="0,0,10,0"/>
+          <Button Content="_Cancel review" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Click="Cancel_Click" Margin="0,0,10,0"/>
+          <Button Content="Approve _Mock (local)" Style="{StaticResource PrimaryActionButton}" IsEnabled="{Binding CanDecide}" Click="ApproveMock_Click"/>
+        </WrapPanel>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

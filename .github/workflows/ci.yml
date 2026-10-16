@@ -43,6 +43,11 @@ jobs:
           dotnet-version: 8.0.x
           architecture: x64
 
+      - name: Install Node.js for actual offline review interoperability tests
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
       - name: Build WPF Approval Agent Mock
         run: dotnet build .\approval-agent\ApprovalAgent.Mock\ApprovalAgent.Mock.csproj --configuration Release
 

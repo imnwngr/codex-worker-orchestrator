@@ -39,6 +39,7 @@ var tests = new (string Name, Action Run)[]
     ("Hallmark controls preserve keyboard focus and hit-target sizing", ReviewAccessibilityContract)
 };
 
+tests = tests.Concat(OfflineReviewTests.Cases()).ToArray();
 var failures = 0;
 foreach (var (name, run) in tests)
 {

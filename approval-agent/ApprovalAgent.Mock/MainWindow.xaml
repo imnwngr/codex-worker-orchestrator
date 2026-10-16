@@ -199,6 +199,10 @@
         <TextBlock Text="REQUEST REVIEW / SYNTHETIC DATA"
                    Style="{StaticResource EyebrowText}"
                    Margin="0,0,0,9" />
+        <Menu Background="Transparent" Margin="0,0,0,12" HorizontalAlignment="Left">
+          <MenuItem Header="_Offline Review Preview…" Click="OpenOfflineReview_Click"
+                    AutomationProperties.Name="Open separate offline synthetic review preview" />
+        </Menu>
         <TextBlock Text="Review the complete task"
                    FontSize="30"
                    FontWeight="SemiBold"

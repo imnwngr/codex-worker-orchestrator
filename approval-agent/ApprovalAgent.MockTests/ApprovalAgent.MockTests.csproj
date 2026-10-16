@@ -7,6 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\ApprovalAgent.Mock\Models\OfflineReviewContext.cs" Link="Models\OfflineReviewContext.cs" />
+    <Compile Include="..\ApprovalAgent.Mock\Services\ReviewJson.cs" Link="Services\ReviewJson.cs" />
+    <Compile Include="..\ApprovalAgent.Mock\Services\OfflineReviewValidator.cs" Link="Services\OfflineReviewValidator.cs" />
+    <Compile Include="..\ApprovalAgent.Mock\ViewModels\OfflineReviewViewModel.cs" Link="ViewModels\OfflineReviewViewModel.cs" />
+    <None Include="..\ApprovalAgent.Mock\OfflineReviewWindow.xaml" Link="Fixtures\OfflineReviewWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\experiments\integration-contracts\fixtures\golden.review.json" Link="Fixtures\golden.review.json" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="..\ApprovalAgent.Mock\Models\ApprovalProposal.cs"
              Link="Models\ApprovalProposal.cs" />
     <Compile Include="..\ApprovalAgent.Mock\ViewModels\ApprovalViewModel.cs"

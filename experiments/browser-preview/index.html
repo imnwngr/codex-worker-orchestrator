@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Approval Agent — Offline Browser Preview</title><link rel="stylesheet" href="preview.css"></head>
+<body><main><p class="eyebrow">Approval Agent / Method C</p><h1>Offline browser review</h1>
+<p class="warning">SIMULATION ONLY — DEFAULT_DENY. Requester, account, device, browser origin and channel claims are UNVERIFIED. No production approval or network delivery.</p>
+<p>In WPF, select Method C, register the fake request and export its browser package. Import that file here. Return the downloaded response to the same active WPF session before its original deadline.</p>
+<label for="request">Import synthetic request package</label><input id="request" type="file" accept=".json,application/json">
+<p id="status" role="status" aria-live="polite">No request loaded.</p>
+<section aria-labelledby="details-title"><h2 id="details-title">Read-only action and identity claims</h2><pre id="details">No request loaded.</pre></section>
+<p>Digest claims are untrusted. The active WPF validator independently binds the response to its canonical action and session. This browser cannot establish task provenance.</p>
+<div class="actions"><button data-outcome="GRANT" disabled>Synthetic Approve</button><button data-outcome="DENY" disabled>Synthetic Deny</button><button data-outcome="CANCEL" disabled>Synthetic Cancel</button><button data-outcome="UNKNOWN" disabled>Unknown outcome</button></div>
+<p>After export, controls stay disabled. Duplicate downloads, old generations and expired responses are rejected by the active offline session. Reloading a file does not renew its deadline.</p>
+</main><script src="preview.js"></script><script src="ui.js"></script></body></html>

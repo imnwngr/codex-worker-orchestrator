@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using System.IO;
+using System.Text;
 using Microsoft.Win32;
 using ApprovalAgent.Mock.ViewModels;
 using ApprovalAgent.Mock.Services;
@@ -32,6 +34,7 @@ public partial class OfflineReviewWindow : Window
             };
             Resources["ReviewTextBox"] = new Style(typeof(System.Windows.Controls.TextBox));
         }
+        Resources["BoolVisibility"] = new System.Windows.Controls.BooleanToVisibilityConverter();
         InitializeComponent(); Owner = owner; DataContext = _review;
         var preference = _preferences.Read(); _review.SetPreference(preference.PreferredMethod);
         Loaded += (_, _) => { OfferOnboarding(); SelectFileButton.Focus(); };
@@ -45,9 +48,9 @@ public partial class OfflineReviewWindow : Window
         _offeredOnboarding = true;
         new ApprovalMethodWindow(this, _review, _preferences, false, true).ShowDialog();
     }
-    private void MethodSettings_Click(object sender, RoutedEventArgs e) => new ApprovalMethodWindow(this, _review, _preferences, false, _review.PreferredMethod is null).ShowDialog();
+    private void MethodSettings_Click(object sender, RoutedEventArgs e) { new ApprovalMethodWindow(this, _review, _preferences, false, _review.PreferredMethod is null).ShowDialog(); SelectFileButton.Focus(); }
     private void ChangeMethod_Click(object sender, RoutedEventArgs e)
-    { _review.RefreshExpiry(); if (_review.CanSwitch) new ApprovalMethodWindow(this, _review, _preferences, true, false).ShowDialog(); }
+    { _review.RefreshExpiry(); if (_review.CanSwitch) new ApprovalMethodWindow(this, _review, _preferences, true, false).ShowDialog(); SelectFileButton.Focus(); }
     private void SelectFile_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Title = "Select untrusted offline synthetic review data", Filter = "Offline review (*.review.json)|*.review.json", CheckFileExists = true, Multiselect = false };
@@ -55,6 +58,31 @@ public partial class OfflineReviewWindow : Window
     }
     private void Simulate(string action)
     { if (_review.SimulationToken is { } token) _review.Simulate(action, token, _review.Simulation.FixtureId); else _review.ReportUnavailable(); }
+    private void UnavailablePreview_Click(object sender, RoutedEventArgs e) => Simulate("UNAVAILABLE");
+    private void FailurePreview_Click(object sender, RoutedEventArgs e) => Simulate("FAIL");
+    private void StartPreview_Click(object sender, RoutedEventArgs e) => _review.StartInteractivePreview();
+    private void ApprovePreview_Click(object sender, RoutedEventArgs e) => _review.RespondInteractivePreview("GRANT");
+    private void DenyPreview_Click(object sender, RoutedEventArgs e) => _review.RespondInteractivePreview("DENY");
+    private void CancelPreview_Click(object sender, RoutedEventArgs e) => _review.RespondInteractivePreview("CANCEL");
+    private void UnknownPreview_Click(object sender, RoutedEventArgs e) => _review.RespondInteractivePreview("UNKNOWN");
+    private void CrashPreview_Click(object sender, RoutedEventArgs e) => _review.CrashInteractivePreview();
+    private void RecoverPreview_Click(object sender, RoutedEventArgs e) => _review.RecoverInteractivePreview();
+    private void ExportBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog { Title = "Export untrusted offline browser preview", Filter = "Browser preview (*.browser.json)|*.browser.json" };
+        if (dialog.ShowDialog(this) != true) return;
+        var json = _review.ExportBrowserPackage();
+        if (json is null) return;
+        try { BrowserPreviewFiles.WritePackage(dialog.FileName, json); }
+        catch { _review.ReportOperationFailure("Browser export failed; choose a new local filename."); }
+    }
+    private void ImportBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Import untrusted browser response", Filter = "Synthetic response (*.response.json)|*.response.json", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        try { _review.ImportBrowserResponse(BrowserPreviewFiles.ReadResponse(dialog.FileName)); }
+        catch { _review.ReportOperationFailure("Browser response unreadable, nonlocal or oversized; current review retained."); }
+    }
     private void StartSimulation_Click(object sender, RoutedEventArgs e) => Simulate("START");
     private void DeliverSimulation_Click(object sender, RoutedEventArgs e) => Simulate("DELIVER");
     private void CompleteSimulation_Click(object sender, RoutedEventArgs e) => Simulate("COMPLETE");

@@ -16,7 +16,7 @@ public static class HybridMethods
             "Explicitly select a valid local review file.", "Local mock approve, reject, cancel and expire.", "UNESTABLISHED / NON_AUTHORIZING", false, false, false),
         new HybridMethod(Protected, "B — Protected Windows (simulation)", "Local simulation only; no protected component or authenticated IPC.", HybridAvailability.Simulated,
             "Real use requires reviewed installation, component identity and privilege separation.", "In-memory mock decisions only.", "UNESTABLISHED / NON_AUTHORIZING", true, false, false),
-        new HybridMethod(Remote, "C — Remote / Browser (simulation)", "Local simulation only; nothing is sent to a browser or device.", HybridAvailability.Simulated,
+        new HybridMethod(Remote, "C — Remote / Browser (simulation)", "Offline browser files and in-process preview; no remote identity or network channel.", HybridAvailability.Simulated,
             "Real use requires device registration, origin and authenticated channels.", "In-memory mock decisions only.", "UNESTABLISHED / NON_AUTHORIZING", true, false, false)
     });
     public static HybridMethod? Find(string? id) => All.SingleOrDefault(m => m.Id == id);

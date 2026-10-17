@@ -43,6 +43,7 @@ tests = tests.Concat(OfflineReviewTests.Cases()).ToArray();
 tests = tests.Concat(HybridTests.Cases()).ToArray();
 tests = tests.Concat(IntegratedHybridTests.Cases()).ToArray();
 tests = tests.Concat(OfflineTrustTests.Cases()).ToArray();
+tests = tests.Concat(InteractiveWorkflowTests.Cases()).ToArray();
 var failures = 0;
 foreach (var (name, run) in tests)
 {

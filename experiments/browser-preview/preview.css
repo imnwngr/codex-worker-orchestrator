@@ -1,0 +1,16 @@
+/* Hallmark: existing restrained review surface; system colors support contrast themes. */
+:root { --paper: Canvas; --ink: CanvasText; --line: ButtonText; --focus: Highlight; --font: system-ui, sans-serif; }
+html, body { overflow-x: clip; }
+body { background: var(--paper); color: var(--ink); font-family: var(--font); margin: 0; line-height: 1.6; }
+main { max-width: 70rem; padding: clamp(1rem, 4vw, 3rem); margin: auto; min-width: 0; }
+h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.2; }
+h1, h2, p, pre { overflow-wrap: anywhere; }
+.eyebrow { font-weight: 700; }
+.warning { border: 2px solid var(--line); padding: 1rem; font-weight: 600; }
+label { display: block; font-weight: 600; }
+input { max-width: 100%; padding: .5rem 0; }
+pre { white-space: pre-wrap; border: 1px solid var(--line); padding: 1rem; max-height: 32rem; overflow: auto; }
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+button { min-height: 44px; padding: .6rem 1rem; font: inherit; white-space: nowrap; cursor: pointer; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }

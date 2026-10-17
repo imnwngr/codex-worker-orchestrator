@@ -5,7 +5,6 @@
         MinWidth="740" MinHeight="620" WindowStartupLocation="CenterOwner"
         FontFamily="{DynamicResource UiFont}" FontSize="14" KeyDown="Window_KeyDown"
         TextOptions.TextFormattingMode="Display" Background="{StaticResource CanvasBrush}">
-  <!-- Reuse the owner's original Hallmark resources; the fixed Mock window remains the default. -->
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Border Background="{StaticResource InkBrush}" Padding="28,20">
@@ -26,12 +25,35 @@
             <TextBlock Text="{Binding MethodDescription}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding SimulationDisplay}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
             <TextBlock Text="B/C scripted fixtures: component/device/origin claims are UNVERIFIED. Selection and simulated completion never authorize execution." TextWrapping="Wrap"/>
-            <WrapPanel>
-              <Button Content="_Start simulation" Click="StartSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
-              <Button Content="Simulate _delivery (C)" Click="DeliverSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
-              <Button Content="Simulate _response" Click="CompleteSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
-              <Button Content="Simulate _unknown (C)" Click="UnknownSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
-              <Button Content="Abandon unknown / reco_ver" Click="RecoverSimulation_Click" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+            <TextBlock Text="{Binding Simulation.Prerequisites}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding ProtocolDisplay}" TextWrapping="Wrap" Margin="0,10,0,8"
+                       AutomationProperties.LiveSetting="Polite"/>
+            <StackPanel Visibility="{Binding IsProtected, Converter={StaticResource BoolVisibility}}">
+              <TextBlock Text="B / FAKE PROTECTED COMPONENT" Style="{StaticResource SectionTitle}"/>
+              <TextBlock Text="No privileged process, protected desktop, Windows Hello, authenticated IPC or installed service. Fake HELLO negotiation and consent exchange run in process." TextWrapping="Wrap"/>
+              <WrapPanel>
+                <Button Content="_Initialize and negotiate fake component" Click="StartPreview_Click" IsEnabled="{Binding CanStartPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+                <Button Content="Simulate unavailable" Click="UnavailablePreview_Click" IsEnabled="{Binding CanStartPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+                <Button Content="Simulate failure" Click="FailurePreview_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+                <Button Content="Simulate _crash" Click="CrashPreview_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              </WrapPanel>
+            </StackPanel>
+            <StackPanel Visibility="{Binding IsRemote, Converter={StaticResource BoolVisibility}}">
+              <TextBlock Text="C / FAKE REMOTE DEVICE" Style="{StaticResource SectionTitle}"/>
+              <TextBlock Text="Fake registration, delivery and response remain in process. Offline browser files carry UNVERIFIED origin, account and device claims." TextWrapping="Wrap"/>
+              <WrapPanel>
+                <Button Content="_Register and deliver fake request" Click="StartPreview_Click" IsEnabled="{Binding CanStartPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+                <Button Content="Simulate _unknown outcome" Click="UnknownPreview_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+                <Button Content="Simulate _disconnect" Click="CrashPreview_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+                <Button Content="Export browser re_quest…" Click="ExportBrowser_Click" IsEnabled="{Binding CanExportBrowser}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+                <Button Content="Import browser _response…" Click="ImportBrowser_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              </WrapPanel>
+            </StackPanel>
+            <WrapPanel Visibility="{Binding IsPreview, Converter={StaticResource BoolVisibility}}">
+              <Button Content="Synthetic _Approve" Click="ApprovePreview_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              <Button Content="Synthetic _Deny" Click="DenyPreview_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              <Button Content="Synthetic C_ancel" Click="CancelPreview_Click" IsEnabled="{Binding CanRespondPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
+              <Button Content="Abandon unknown / reco_ver" Click="RecoverPreview_Click" IsEnabled="{Binding CanRecoverPreview}" Style="{StaticResource ActionButton}" Margin="0,8,8,8"/>
             </WrapPanel>
             <TextBlock Text="{Binding MethodStatus, StringFormat='Policy availability: {0}'}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding PreferenceDisplay, StringFormat='Future default: {0}'}" TextWrapping="Wrap" Margin="0,8,0,10"/>
@@ -50,6 +72,7 @@
             <TextBlock Text="{Binding Context.ContextSha256, StringFormat='Context SHA-256: {0}'}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding Context.ConfigurationFingerprint, StringFormat='Configuration fingerprint: {0}'}" FontFamily="{StaticResource DataFont}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding ExpiresAtDisplay, StringFormat='Expires: {0}'}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding RemainingDisplay}" TextWrapping="Wrap"/>
             <TextBlock Text="Matching digests establish consistency, not authenticated provenance or USER consent. DEFAULT-DENY remains in force."
                        Style="{StaticResource MutedText}" Margin="0,10,0,0"/>
           </StackPanel>
@@ -90,9 +113,9 @@
                    AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Offline mock decision status"/>
         <WrapPanel>
           <Button Content="_Abandon pending review" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanSwitch}" Click="Abandon_Click" Margin="0,0,10,0"/>
-          <Button Content="_Reject" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Click="Reject_Click" Margin="0,0,10,0"/>
-          <Button Content="_Cancel review" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Click="Cancel_Click" Margin="0,0,10,0"/>
-          <Button Content="Approve _Mock (local)" Style="{StaticResource PrimaryActionButton}" IsEnabled="{Binding CanDecide}" Click="ApproveMock_Click"/>
+          <Button Content="_Reject" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Visibility="{Binding IsLocal, Converter={StaticResource BoolVisibility}}" Click="Reject_Click" Margin="0,0,10,0"/>
+          <Button Content="_Cancel review" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDecide}" Visibility="{Binding IsLocal, Converter={StaticResource BoolVisibility}}" Click="Cancel_Click" Margin="0,0,10,0"/>
+          <Button Content="Approve _Mock (local)" Style="{StaticResource PrimaryActionButton}" IsEnabled="{Binding CanDecide}" Visibility="{Binding IsLocal, Converter={StaticResource BoolVisibility}}" Click="ApproveMock_Click"/>
         </WrapPanel>
       </StackPanel>
     </Border>

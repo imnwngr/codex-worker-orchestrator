@@ -12,7 +12,7 @@ const METHODS = freeze([
   { id: "PROTECTED_WINDOWS", displayName: "B — Protected Windows (simulation)", description: "No protected component or authenticated IPC",
     availability: "SIMULATED", prerequisites: "Reviewed installation, component identity and privileges", actions: ["APPROVE_MOCK", "REJECT", "CANCEL"],
     assurance: "UNESTABLISHED_NON_AUTHORIZING", simulated: true, transportEstablished: false, identityEstablished: false },
-  { id: "REMOTE_BROWSER", displayName: "C — Remote / Browser (simulation)", description: "No device or browser communication",
+  { id: "REMOTE_BROWSER", displayName: "C — Remote / Browser (simulation)", description: "Offline browser files; no remote identity or network channel",
     availability: "SIMULATED", prerequisites: "Device registration, browser origin and authenticated channels", actions: ["APPROVE_MOCK", "REJECT", "CANCEL"],
     assurance: "UNESTABLISHED_NON_AUTHORIZING", simulated: true, transportEstablished: false, identityEstablished: false }
 ]);

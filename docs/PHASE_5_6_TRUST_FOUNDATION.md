@@ -75,3 +75,16 @@ Real trusted authorization remains blocked pending separate USER approval and in
 Launch the WPF mock, select a real local fixture and inspect full task/digest, method, simulated trust labels, terminal-state controls and long Unicode text at **100%, 150% and 200% DPI**, minimum and maximized sizes. Check text wrapping, scrolling and focus visibility with Tab, Shift+Tab, Enter, Space, Escape and access keys. Verify picker cancellation and focus return, Settings and future default, A-to-B-to-C-to-A switching, policy denial, expiry with picker open, mock grant/reject/cancel, unknown/recovery and duplicate response refusal. Use Narrator for control names, read-only task and terminal state. Inspect contrast themes and Windows high contrast before and after reopening the window; inspect disabled states, status announcement and legibility. Confirm no screen implies authenticated device, actual protected component or remote delivery.
 
 No manual WPF DPI, screen-reader, focus or contrast acceptance has been performed. Offline tests cannot settle live UI ownership or identity. All real privileged, Windows Hello, IPC, remote, enrollment, production Broker and deployment features remain NO-GO.
+
+## Phase 7–8 interactive preview extension
+
+The WPF preview now exposes in-process component negotiation, synthetic outcomes,
+crash/unknown abandonment, and Method C browser package export/response import.
+Browser files are untrusted projections of the existing validated action. Their
+response is the existing version-1 simulation contract; the active offline session
+independently verifies exact canonical equality, instance, method, generation and
+original deadline. This grants no new trust. No production gate in this document
+has changed: real requester/UI provenance, protected endpoints, remote enrollment,
+authenticated transport, durable consumption and production authorization remain
+**NO-GO**. File possession is not approver authentication. Browser action display
+can be spoofed by a file attacker; its exported outcome is only synthetic input.

@@ -18,6 +18,9 @@
       <StackPanel Margin="32,28" MaxWidth="1080">
         <Button x:Name="SelectFileButton" Content="_Select review file…" HorizontalAlignment="Left" Style="{StaticResource ActionButton}" Click="SelectFile_Click"
                 AutomationProperties.Name="Explicitly select an untrusted offline review file"/>
+        <Button Content="Create fresh _demo…" HorizontalAlignment="Left" Style="{StaticResource ActionButton}"
+                Click="CreateDemo_Click" Margin="0,8,0,0" AutomationProperties.Name="Create a fresh synthetic five-minute review"/>
+        <TextBlock Text="{Binding NextStep}" TextWrapping="Wrap" Margin="0,12,0,0" AutomationProperties.LiveSetting="Polite"/>
         <Border Style="{StaticResource ReviewCard}" Margin="0,18,0,0">
           <StackPanel>
             <TextBlock Text="HYBRID APPROVAL / ALL METHODS NON-AUTHORIZING" Style="{StaticResource EyebrowText}" TextWrapping="Wrap"/>
@@ -108,6 +111,7 @@
     </ScrollViewer>
     <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="28,16">
       <StackPanel>
+        <TextBlock Text="{Binding DiagnosticSummary}" TextWrapping="Wrap" AutomationProperties.Name="Non-authorizing memory-only diagnostics"/>
         <TextBlock Text="{Binding State}" Style="{StaticResource EyebrowText}"/>
         <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,5,0,12"
                    AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Offline mock decision status"/>

@@ -13,9 +13,24 @@ public sealed class ApprovalMethodPreferences(string path)
 {
     public const int MaximumBytes = 1024;
     public static string DefaultPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ApprovalAgent.Mock", "approval-method.json");
+    private void CheckLocation()
+    {
+        if (!Path.IsPathFullyQualified(path) || !path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("\\",StringComparison.Ordinal) || path.Any(char.IsControl) ||
+            path.Split(Path.DirectorySeparatorChar,Path.AltDirectorySeparatorChar).Any(part => part is "." or "..") ||
+            (OperatingSystem.IsWindows() && (path.Length < 3 || !char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2..].Contains(':') ||
+                new DriveInfo(Path.GetPathRoot(path)!).DriveType != DriveType.Fixed)))
+            throw new IOException("PREFERENCE_LOCATION_INVALID");
+        for (var dir = new FileInfo(path).Directory; dir is not null; dir = dir.Parent)
+            if (Directory.Exists(dir.FullName) && (dir.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("PREFERENCE_LOCATION_INVALID");
+        if (File.Exists(path) && (File.GetAttributes(path) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+            throw new IOException("PREFERENCE_LOCATION_INVALID");
+    }
     public MethodPreference Read()
     {
         try {
+            CheckLocation();
             if (!File.Exists(path)) return new(null, "PREFERENCE_NOT_SET");
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             if (stream.Length > MaximumBytes) return new(null, "PREFERENCE_INVALID");
@@ -37,15 +52,17 @@ public sealed class ApprovalMethodPreferences(string path)
         if (HybridMethods.Find(id) is null) return "PREFERENCE_INVALID";
         string? temporary = null;
         try {
+            CheckLocation();
             var full = Path.GetFullPath(path); var directory = Path.GetDirectoryName(full)!;
             Directory.CreateDirectory(directory);
             temporary = Path.Combine(directory, ".approval-method-" + Guid.NewGuid().ToString("N") + ".tmp");
             var bytes = Encoding.UTF8.GetBytes("{\"preferredMethod\":\"" + id + "\",\"schemaVersion\":1}\n");
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { stream.Write(bytes); stream.Flush(true); }
+            CheckLocation();
             File.Move(temporary, full, true); return "PREFERENCE_SAVED";
         } catch { return "PREFERENCE_SAVE_FAILED"; }
         finally { if (temporary is not null) try { File.Delete(temporary); } catch { /* No raw diagnostics. */ } }
     }
     public string Reset()
-    { try { File.Delete(path); return "PREFERENCE_RESET"; } catch { return "PREFERENCE_SAVE_FAILED"; } }
+    { try { CheckLocation(); File.Delete(path); return "PREFERENCE_RESET"; } catch { return "PREFERENCE_SAVE_FAILED"; } }
 }

@@ -1,5 +1,6 @@
-param([switch]$SupplementalNode)
+param([switch]$SupplementalNode,[ValidateSet('PatchReview','CommittedRelease')][string]$Mode='PatchReview',[string]$ExpectedSourceSha256,[string]$ExpectedRevision,[string]$IntegrationManifest,[string]$ExpectedIntegrationManifestSha256)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '../offline-release/Release.Common.ps1')
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 Push-Location $repository
 try {
@@ -8,8 +9,8 @@ try {
         & $program @arguments
         if ($LASTEXITCODE -ne 0) { throw "$program failed with exit code $LASTEXITCODE" }
     }
-    $baseline = 'c3f5a9c32563f1f218d592dc2e74e961ecd373ad'
-    if ((git rev-parse HEAD) -ne $baseline) { throw 'Exact disposable baseline required' }
+    $sourceIdentity = Assert-ReleaseSource $repository $Mode $ExpectedSourceSha256 $ExpectedRevision $IntegrationManifest $ExpectedIntegrationManifestSha256
+    $baseline = $sourceIdentity.sourceRevision
     Invoke-Checked git @('diff', '--check')
     foreach ($project in @('approval-agent/ApprovalAgent.Mock', 'approval-agent/ApprovalAgent.MockTests', 'experiments/webauthn-windows-lab', 'experiments/webauthn-offline-assurance')) {
         Invoke-Checked dotnet @('build', $project, '-c', 'Release', '-p:NuGetAudit=false')

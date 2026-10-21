@@ -56,6 +56,17 @@ public partial class OfflineReviewWindow : Window
         var dialog = new OpenFileDialog { Title = "Select untrusted offline synthetic review data", Filter = "Offline review (*.review.json)|*.review.json", CheckFileExists = true, Multiselect = false };
         if (dialog.ShowDialog(this) == true) _review.LoadFile(dialog.FileName);
     }
+    private void CreateDemo_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog { Title = "Create a new offline synthetic demo", Filter = "Offline review (*.review.json)|*.review.json" };
+        if (dialog.ShowDialog(this) == true) {
+            try {
+                OfflineDemoFiles.WriteNew(dialog.FileName, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                _review.LoadFile(dialog.FileName);
+            } catch { _review.ReportOperationFailure("DEMO_CREATE_FAILED; choose a new filename on a local fixed volume."); }
+        }
+        SelectFileButton.Focus();
+    }
     private void Simulate(string action)
     { if (_review.SimulationToken is { } token) _review.Simulate(action, token, _review.Simulation.FixtureId); else _review.ReportUnavailable(); }
     private void UnavailablePreview_Click(object sender, RoutedEventArgs e) => Simulate("UNAVAILABLE");

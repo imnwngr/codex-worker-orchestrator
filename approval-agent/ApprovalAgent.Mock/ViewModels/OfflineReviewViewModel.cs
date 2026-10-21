@@ -59,7 +59,35 @@ public sealed class OfflineReviewViewModel(Func<long>? clock = null, HybridPolic
     public string Warning => "OFFLINE SYNTHETIC PREVIEW — NO DISPATCH";
     public string ExpiresAtDisplay => Context is null ? "No file loaded" : DateTimeOffset.FromUnixTimeMilliseconds(Context.ExpiresAt).ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture);
     public IReadOnlyList<OfflineReviewTarget> Targets => Context?.Targets ?? (IReadOnlyList<OfflineReviewTarget>)System.Array.Empty<OfflineReviewTarget>();
-    private void Notify() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+    public sealed record DiagnosticEntry(long Sequence, string Category, string Method, long Generation,
+        bool Authorized = false, string ProductionAuthorization = "DEFAULT_DENY");
+    private readonly Queue<DiagnosticEntry> _diagnostics = new();
+    private string? _lastDiagnostic;
+    private long _diagnosticSequence;
+    public IReadOnlyList<DiagnosticEntry> Diagnostics { get { lock (_lifecycleGate) { return Array.AsReadOnly(_diagnostics.ToArray()); } } }
+    public string NextStep => Context is null ? "Create a fresh synthetic demo or select a .review.json file."
+        : State != OfflineMockState.Pending ? "This review is terminal. Select or create a new review to continue."
+        : !CanDecide ? "Policy blocks this method. Change to an eligible method or abandon the review."
+        : IsLocal ? "Read the complete task, destination and digest; then choose a local mock outcome."
+        : CanRecoverPreview ? "Outcome is unknown. Abandon it explicitly; no success is inferred."
+        : CanStartPreview ? "Initialize the fake component or register the fake request to begin."
+        : CanRespondPreview ? (IsRemote ? "Export a browser request and return its response before expiry, or choose a synthetic outcome here."
+            : "Choose synthetic consent, refusal, cancellation, failure or crash.")
+        : "Change method away and back to retry, or abandon this pending review.";
+    public string DiagnosticSummary => "SYNTHETIC_ONLY / " + _diagnostics.Count + "/32 transition records / memory only / DEFAULT_DENY";
+    private void Notify()
+    {
+        lock (_lifecycleGate) {
+            var category = State + "/" + Simulation.State;
+            var key = category + "/" + SelectedMethod + "/" + ReviewGeneration;
+            if (key != _lastDiagnostic) {
+                _lastDiagnostic = key;
+                if (_diagnostics.Count == 32) _diagnostics.Dequeue();
+                _diagnostics.Enqueue(new(++_diagnosticSequence, category, SelectedMethod, ReviewGeneration));
+            }
+        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+    }
     private bool Load(Func<OfflineReviewContext> validate) { lock (_lifecycleGate) { return LoadCore(validate); } }
     private bool LoadCore(Func<OfflineReviewContext> validate)
     {

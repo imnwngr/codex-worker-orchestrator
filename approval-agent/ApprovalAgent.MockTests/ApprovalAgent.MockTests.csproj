@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../ApprovalAgent.Mock/Services/OfflineDemoFiles.cs" Link="Services/OfflineDemoFiles.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Services\BrowserPreviewFiles.cs" Link="Services\BrowserPreviewFiles.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Services\OfflineTrustProtocol.cs" Link="Services\OfflineTrustProtocol.cs" />
     <Compile Include="..\ApprovalAgent.Mock\Models\HybridSimulation.cs" Link="Models\HybridSimulation.cs" />
@@ -33,5 +34,8 @@
     <None Include="..\ApprovalAgent.Mock\MainWindow.xaml"
           Link="Fixtures\MainWindow.xaml"
           CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../experiments/integration-contracts/fixtures/golden.review.json" LogicalName="OfflineDemo.review.json" />
   </ItemGroup>
 </Project>

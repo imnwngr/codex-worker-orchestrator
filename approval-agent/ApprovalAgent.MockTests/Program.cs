@@ -6,6 +6,8 @@ using ApprovalAgent.Mock.Models;
 using ApprovalAgent.Mock.Services;
 using ApprovalAgent.Mock.ViewModels;
 
+if (args.Length != 0) return args.Length == 2 && args[0] == "--demo" ? ReleaseReadinessTests.Demo(args[1]) : 64;
+
 var tests = new (string Name, Action Run)[]
 {
     ("preserves exact task text and calculates its UTF-8 SHA-256", ExactTextAndHash),
@@ -44,6 +46,7 @@ tests = tests.Concat(HybridTests.Cases()).ToArray();
 tests = tests.Concat(IntegratedHybridTests.Cases()).ToArray();
 tests = tests.Concat(OfflineTrustTests.Cases()).ToArray();
 tests = tests.Concat(InteractiveWorkflowTests.Cases()).ToArray();
+tests = tests.Concat(ReleaseReadinessTests.Cases()).ToArray();
 var failures = 0;
 foreach (var (name, run) in tests)
 {

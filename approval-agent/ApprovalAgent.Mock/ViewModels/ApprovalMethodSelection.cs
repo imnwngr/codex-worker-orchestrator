@@ -12,7 +12,7 @@ public sealed class ApprovalMethodSelection
     private readonly OfflineReviewViewModel _review;
     private readonly ApprovalMethodPreferences _preferences;
     private readonly string? _request, _session, _digest;
-    private readonly long _generation;
+    private long _generation;
     public bool Switching { get; }
     public IReadOnlyList<MethodOption> Options { get; }
     public string Status { get; private set; } = "Preference is UX only. Every method remains non-authorizing.";
@@ -29,6 +29,7 @@ public sealed class ApprovalMethodSelection
             if (_request is null || !_review.SwitchMethod(id!, _request, _session!, _digest!, _generation)) {
                 Status = "HYBRID_SWITCH_REJECTED; review state or policy changed. No preference saved."; return false;
             }
+            _generation = _review.ReviewGeneration; // Retry a failed default save against the method just applied.
             if (!setAsDefault) { Status = "METHOD_SWITCHED; preference unchanged."; return true; }
         }
         var saved = _preferences.Save(id!);

@@ -67,6 +67,27 @@ Check 'staging create and rollback preserve archive' {
     Invoke-Native pwsh @('-NoProfile','-File',(Join-Path $PSScriptRoot 'Manage-Staging.ps1'),'-Mode','Rollback','-Destination',$stage)
     if((Test-Path $stage) -or -not(Test-Path $archive)){throw 'ROLLBACK_WRONG_IMPACT'}
 }
+Check 'staging CLI rejects its own source checkout for every mode' {
+    # Copy only the CLI and shared guard into a disposable Temp checkout shape.
+    # A helper-only test would not catch missing repository wiring in the CLI.
+    $fakeRepository = Join-Path $root 'source-checkout'
+    $fakeTools = Join-Path $fakeRepository 'experiments/offline-release'
+    $null = New-Item -ItemType Directory -Path $fakeTools -Force
+    foreach ($file in @('Manage-Staging.ps1','Release.Common.ps1')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $fakeTools $file)
+    }
+    foreach ($mode in @('Plan','Create','Rollback','CleanupRC')) {
+        foreach ($destination in @($fakeRepository,(Join-Path $fakeRepository 'phase-9-12-release-candidate-probe'))) {
+            $output = & pwsh -NoProfile -File (Join-Path $fakeTools 'Manage-Staging.ps1') -Mode $mode -Destination $destination -Package $archive 2>&1
+            if ($LASTEXITCODE -eq 0 -or -not (($output | Out-String).Contains('STAGING_INSIDE_SOURCE'))) {
+                throw "SOURCE_STAGING_GUARD_BYPASSED: $mode"
+            }
+        }
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $fakeTools 'Manage-Staging.ps1'))) {
+        throw 'SOURCE_GUARD_TEST_CHANGED_SOURCE'
+    }
+}
 Check 'externally pinned archive and manifest hashes accepted' {
     $a=(Get-FileHash $archive -Algorithm SHA256).Hash
     $m=(Get-FileHash $manifestPath -Algorithm SHA256).Hash

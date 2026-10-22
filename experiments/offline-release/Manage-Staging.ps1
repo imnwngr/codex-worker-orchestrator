@@ -1,7 +1,8 @@
 param([Parameter(Mandatory)][ValidateSet('Plan','Create','Rollback','CleanupRC')][string]$Mode,
     [Parameter(Mandatory)][string]$Destination, [string]$Package,[string]$ExpectedManifestSha256,[string]$ExpectedArchiveSha256,[string]$ExpectedSourceSha256,[string]$ExpectedRevision,[string]$ExpectedIntegrationManifestSha256)
 . (Join-Path $PSScriptRoot 'Release.Common.ps1')
-$root = Assert-StagingPath $Destination ''
+$repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$root = Assert-StagingPath $Destination $repository
 $verifyPins = @()
 foreach ($name in @('ExpectedManifestSha256','ExpectedArchiveSha256','ExpectedSourceSha256','ExpectedRevision','ExpectedIntegrationManifestSha256')) {
     $value = Get-Variable -Name $name -ValueOnly

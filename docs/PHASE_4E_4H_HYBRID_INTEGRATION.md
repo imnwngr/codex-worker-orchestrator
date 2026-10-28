@@ -134,7 +134,7 @@ accounts, push delivery, remote issuance and credentials remain NO-GO.
 
 ## UX and manual Windows acceptance
 
-Incremental Hallmark layout retains method picker, Settings, action preview,
+Incremental review layout retains method picker, Settings, action preview,
 minimum sizing, scrolling, wrapping and access keys. Script state and unverified
 claims are visible with distinct canonical status feedback. Failed operations
 produce sanitized denial feedback. Initial keyboard focus returns to file

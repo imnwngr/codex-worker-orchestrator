@@ -35,10 +35,10 @@ var tests = new (string Name, Action Run)[]
     ("inconsistent native diagnostic combinations fail closed", InconsistentNativeReport),
     ("unknown and unsupported runtime states remain blocked", UnknownDiagnosticVersionGates),
     ("WPF structured report uses non-writing binding", ReadOnlyWpfBindingContract),
-    ("Hallmark review preserves the exact read-only task and warnings", ReviewSurfaceContract),
-    ("Hallmark decision bar preserves mock-only commands and expiry gating", ReviewDecisionContract),
-    ("Hallmark diagnostics remain optional and strictly read-only", ReviewDiagnosticsContract),
-    ("Hallmark controls preserve keyboard focus and hit-target sizing", ReviewAccessibilityContract)
+    ("UI review preserves the exact read-only task and warnings", ReviewSurfaceContract),
+    ("UI decision bar preserves mock-only commands and expiry gating", ReviewDecisionContract),
+    ("UI diagnostics remain optional and strictly read-only", ReviewDiagnosticsContract),
+    ("UI controls preserve keyboard focus and hit-target sizing", ReviewAccessibilityContract)
 };
 
 tests = tests.Concat(OfflineReviewTests.Cases()).ToArray();

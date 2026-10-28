@@ -147,7 +147,7 @@ are escaped rather than allowed to impersonate UI. Tests decode the displayed ta
 and compare it with the effective wire task. Preview content is deliberate visible
 review data, not an audit log; diagnostic outcomes omit task/config/advisory content.
 
-The Hallmark WPF Mock, fixed default proposal, Escape-to-reject, expiry logic and
+The WPF Mock, fixed default proposal, Escape-to-reject, expiry logic and
 read-only diagnostics are unchanged. Cross-runtime WPF loading would require a new
 serialized-context/display validation boundary. A plain JSON file would lose the
 local object identity and must not automatically be trusted. This batch therefore
@@ -224,7 +224,7 @@ No live provider or real credential operation is introduced or tested by this wo
 | --- | --- |
 | Integrate Phase 4B | GO after the full regression/build and exact-baseline patch checks pass |
 | Begin Phase 4C on a new USER instruction | Choose Windows deployment/threat model; reuse this preparation seam and define the cross-runtime review boundary explicitly |
-| WPF connected preview | Needs reviewed serialization/display binding and deliberate fixture mode; keep fixed Hallmark behavior and no authorization; no JSON-is-trusted shortcut |
+| WPF connected preview | Needs reviewed serialization/display binding and deliberate fixture mode; keep fixed review UI behavior and no authorization; no JSON-is-trusted shortcut |
 | Authenticated local IPC/application identity | USER must select principals, installation/update ownership, privileges and same-user attacker assumptions before implementation |
 | Real operational recovery | Requires approved storage ownership, durable operation/consumption transaction, restart/rollback and unknown-outcome policy; no synthetic snapshot promotion |
 | Real enrollment/assertion/enumeration/deletion, credential/proof persistence | NO-GO; separate explicit USER decisions and trusted lifecycle/origin/RP/custody design |

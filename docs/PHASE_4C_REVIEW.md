@@ -14,7 +14,7 @@ flowchart LR
   F --> S[Operator Select review file]
   S --> V[Strict .NET validation and independent digest reproduction]
   V --> C[Immutable validated snapshot]
-  C --> W[Separate Hallmark Offline Review Preview]
+  C --> W[Separate Offline Review Preview]
   W --> D[Local mock state only: no response/export/dispatch]
   X[Production Broker and credential interfaces] --> N[Unchanged and disconnected]
 ```
@@ -24,7 +24,7 @@ flowchart LR
 | A | One review-file v1 envelope carrying the existing Phase 4B context; existing digest semantics ported exactly |
 | B | Deterministic recognized-context export, explicit new local file selection, bounded UTF-8 and no handoff |
 | C | `OfflineReviewValidator` / `ReviewJson`: strict parsing, schema, bounds, Unicode, URLs, relationships and independent hashes |
-| D | Separate `OfflineReviewWindow` with shared original Hallmark resources; explicit selector and immutable per-target display |
+| D | Separate `OfflineReviewWindow` with shared original UI resources; explicit selector and immutable per-target display |
 | E | `OfflineReviewViewModel`: pending, approve mock, reject, cancel, expire, reload and stale-context guards; no decision exporter |
 | F | Actual Node CLI export invoked by .NET tests, byte-identical golden vector, independent validation/display and hostile mutation tests |
 | G | Windows identity decision dossier below; no identity/IPC mechanism selected or enabled |
@@ -132,7 +132,7 @@ provider configuration and adapter execution behavior are unchanged.
 
 `MainWindow.xaml` adds only a menu entry; its two original buttons, layout/resources,
 fixed task, keyboard handler, expiry and diagnostics remain. `OfflineReviewWindow`
-reuses the owner's Hallmark fonts, brushes, cards, button styles and focus ring.
+reuses the owner's existing fonts, brushes, cards, button styles and focus ring.
 Its warning is **OFFLINE SYNTHETIC PREVIEW — NO DISPATCH**. Complete ordered tasks,
 wire bodies, provider/model/endpoint, timeouts, metadata, request/batch/session/context
 identity, config fingerprint, expiry and local state are shown in read-only bindings.

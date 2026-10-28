@@ -13,7 +13,7 @@ flowchart LR
   N[Existing Node canonical preparation] --> F[Unchanged explicit offline review-file export]
   F --> V[Existing strict .NET validation]
   V --> I[Immutable effective context]
-  I --> W[Existing Hallmark offline review + hybrid method state]
+  I --> W[Existing offline review + hybrid method state]
   P[Minimal untrusted UX preference] --> Q[Preferred method for future loads]
   Q --> W
   T[Code-owned offline policy] --> W
@@ -37,7 +37,7 @@ remains separate; a hybrid mock decision is never supplied to a production verif
 | C | `ApprovalMethodPreferences`, `ApprovalMethodSelection`: bounded versioned preference, settings/save/reset, next-launch restore |
 | D | `OfflineReviewViewModel.SwitchMethod`: pending-only explicit switch, unchanged action/expiry and fresh generation |
 | E | Existing WPF lifecycle extended; pure Node `HybridCoordinator`; strict correlation and no fallback |
-| F | Separate Hallmark selection dialog, current/default indicator, settings, pending picker and unchecked optional default |
+| F | Separate method-selection dialog, current/default indicator, settings, pending picker and unchecked optional default |
 | G | Existing harness extended with production settings/selection/coordinator tests, including actual Phase 4C interoperability |
 | H | This consolidated implementation, operational limits and ordered USER decision gates |
 
@@ -59,7 +59,7 @@ or contradictory catalog metadata fails closed. No method is production-capable.
 
 The fixed-proposal MainWindow is unchanged and remains startup mode. Opening its
 existing Offline Review Preview starts the hybrid experience. On first use without
-a valid preference, a Hallmark dialog explains A/B/C and requires an explicit choice
+a valid preference, a method-selection dialog explains A/B/C and requires an explicit choice
 to save a preference. Cancel or Escape dismisses setup and leaves the existing
 offline local preview usable. No mandatory migration or administrator action.
 
@@ -179,7 +179,7 @@ snapshotted. No filesystem persistence or real transport is added to Node. Its
 clock errors are sanitized and pending review fails closed. Correlation includes
 method ID as well as generation and context identity.
 
-The WPF dialog reuses Hallmark owner resources, scrolls/wraps long descriptions,
+The WPF dialog reuses shared owner resources, scrolls/wraps long descriptions,
 supports mnemonic labels/buttons and Escape-to-cancel. The underlying review keeps
 Escape-to-reject, readonly exact tasks/wire bodies, provider/model/destination,
 expiry timer and current mock decisions. No new field is editable in the action.

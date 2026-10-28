@@ -31,7 +31,6 @@
 Only activate this workflow for UI/UX tasks.
 
 - Read DESIGN.md if available.
-- Use the installed `hallmark` skill for design guidance.
 - Use `antislop` and relevant supporting skills
   for implementation quality and auditing.
 - Apply Anti-slop during implementation.
@@ -42,8 +41,7 @@ Only activate this workflow for UI/UX tasks.
 Design priorities:
 1. Functional correctness and accessibility.
 2. Project-specific design requirements.
-3. Hallmark design guidance.
-4. Anti-slop quality validation.
+3. Anti-slop quality validation.
 
 Do not apply UI-specific design rules to
 backend, infrastructure, or orchestration logic.

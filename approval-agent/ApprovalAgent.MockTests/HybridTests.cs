@@ -144,7 +144,7 @@ internal static class HybridTests
             var picker = new ApprovalMethodSelection(vm, store, true); broken = true;
             Must(!picker.Apply(HybridMethods.Protected, true)); Must(vm.State == OfflineMockState.Expired && store.Read().NeedsOnboarding);
         })),
-        ("4D Hallmark hybrid controls expose explicit choices settings unchecked default and keyboard", UiContract)
+        ("4D hybrid UI controls expose explicit choices settings unchecked default and keyboard", UiContract)
     };
     private static void UiContract()
     {

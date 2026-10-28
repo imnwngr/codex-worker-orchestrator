@@ -1,4 +1,4 @@
-/* Hallmark: existing restrained review surface; system colors support contrast themes. */
+/* Existing restrained review surface; system colors support contrast themes. */
 :root { --paper: Canvas; --ink: CanvasText; --line: ButtonText; --focus: Highlight; --font: system-ui, sans-serif; }
 html, body { overflow-x: clip; }
 body { background: var(--paper); color: var(--ink); font-family: var(--font); margin: 0; line-height: 1.6; }

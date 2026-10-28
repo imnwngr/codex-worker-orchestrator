@@ -13,7 +13,7 @@
         FontSize="14"
         TextOptions.TextFormattingMode="Display"
         AutomationProperties.Name="Approval Agent Mock Prototype">
-  <!-- Hallmark · desktop redesign · utilitarian/editorial · custom trust-console palette
+  <!-- Desktop design · utilitarian/editorial · custom trust-console palette
        Pre-emit critique: Philosophy 5 · Hierarchy 5 · Execution 4 · Specificity 5 · Restraint 5 · Variety 4
        Invariants: mock-only actions, read-only diagnostics, warning prominence, keyboard access. -->
   <Window.Resources>

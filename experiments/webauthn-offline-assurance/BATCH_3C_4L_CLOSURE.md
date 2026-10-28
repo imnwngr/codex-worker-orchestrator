@@ -14,7 +14,7 @@ Assurance observes policy and supplied evidence; it never issues authorization.
 The Lab uses in-memory fake credentials. Mock approval records local mock state.
 The existing Windows diagnostic surface remains read-only. None of these facts,
 a successful signature, an executable path, a Hello prompt, a hash or a commit
-string independently proves USER approval. Production source and the Hallmark UI
+string independently proves USER approval. Production source and the review UI
 are outside this patch's changes.
 
 ## Twelve-phase disposition
@@ -147,7 +147,7 @@ two candidates, compares every member byte and audits both. Logs and a summary a
 local observations; counts are measured from execution, not used as proof inputs.
 CI retains exactly five expanded jobs; only Windows .NET performs WPF and candidate
 checks. Linux/Node versions not installed locally are future CI evidence, not local
-success claims. Manual visual/accessibility Hallmark review remains separately pending.
+success claims. Manual visual/accessibility UI review remains separately pending.
 
 Application identity is not bound to an authenticated installed application.
 Real Windows Hello credential operations remain disabled and require a separate

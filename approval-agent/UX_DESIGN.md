@@ -1,10 +1,8 @@
-# Approval Agent Mock — Hallmark UI/UX design record
+# Approval Agent Mock — UI/UX design record
 
-This is a native **WPF desktop prototype**. Hallmark's web-specific HTML/CSS
-rules are adapted to XAML rather than literally applying browser breakpoints or
-CSS syntax. Design reference: [nutlope/hallmark](https://github.com/nutlope/hallmark),
-`skills/hallmark/SKILL.md`, particularly its preflight, redesign safety,
-interaction/states and anti-pattern guidance.
+This is a native **WPF desktop prototype**. Design guidance covers safe
+redesign, interaction states and accessibility using native XAML controls,
+rather than browser breakpoints or CSS syntax.
 
 ## Preflight and intended user
 
@@ -42,7 +40,7 @@ The task and JSON remain selectable, scrolling and strictly read-only. There
 is no separate confirmation flow: one would change mock behavior rather than
 just its presentation.
 
-## Hallmark evaluation
+## Design evaluation
 
 | Criterion | Self-score (1–5) | Evidence / remaining validation |
 | --- | ---: | --- |

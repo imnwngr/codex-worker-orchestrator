@@ -44,3 +44,7 @@ approval-logs/
 # .NET build artifacts
 bin/
 obj/
+
+# Desktop test observations and ephemeral policy material
+desktop-evidence/
+*.phase15-local.json

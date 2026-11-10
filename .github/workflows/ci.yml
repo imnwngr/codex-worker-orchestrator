@@ -79,3 +79,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet run --no-build --no-restore --configuration Release --project .\experiments\webauthn-offline-assurance\WebAuthn.OfflineAssurance.csproj -- --candidate-audit . $revision $candidate
           exit $LASTEXITCODE
+
+      - name: Build desktop agent and synthetic fixture (no interactive GUI claim)
+        run: |
+          dotnet build desktop-agent/DesktopAgent.Windows -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build desktop-agent/DesktopAgent.Fixture -c Release
+          exit $LASTEXITCODE
+
+      - name: Run desktop protocol and policy tests with fake backend
+        run: dotnet run --project desktop-agent/DesktopAgent.Tests -c Release
+
+      - name: Verify real agent IPC denial only
+        run: node desktop-agent/scripts/probe-and-deny.js

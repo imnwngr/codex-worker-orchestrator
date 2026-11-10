@@ -7,6 +7,8 @@ const { ProviderRegistry } = require("./providers/registry");
 const { createRuntimeAdapters } = require("./providers/runtime");
 const { BatchGate, handleBatch } = require("./providers/batch-security");
 
+const { handleDesktop } = require("./desktop/http");
+
 const HOST = "127.0.0.1";
 const PORT = 8765;
 
@@ -53,6 +55,7 @@ function createBrokerServer(options = {}) {
   const logger = options.logger || console;
 
   return http.createServer(async (req, res) => {
+    if (req.method === 'POST' && req.url === '/v1/desktop/execute') return handleDesktop(req, res, options);
     if (req.method === "POST" && req.url === "/v1/analyze/batch") {
       return handleBatch(req, res, batchOptions);
     }
